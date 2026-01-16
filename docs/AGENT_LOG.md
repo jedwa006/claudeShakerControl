@@ -387,6 +387,7 @@ Implement live run progress countdown timer and command feedback UI. Fix protoco
 **Date:** 2026-01-16
 **Branch:** `feature/stage-4-pid-pages`
 **Status:** Complete
+**Merged to dev:** 2026-01-16
 
 ### Scope Statement
 Implement functional PID detail pages with real setpoint editing and mode control via BLE commands.
