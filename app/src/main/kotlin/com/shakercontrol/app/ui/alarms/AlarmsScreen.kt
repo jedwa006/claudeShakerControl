@@ -21,6 +21,7 @@ import com.shakercontrol.app.ui.theme.ShakerControlTheme
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.flow.collect
 
 /**
  * Alarms screen.
@@ -32,74 +33,142 @@ fun AlarmsScreen(
     viewModel: AlarmsViewModel = hiltViewModel()
 ) {
     val alarms by viewModel.alarms.collectAsStateWithLifecycle()
+    val isConnected by viewModel.isConnected.collectAsStateWithLifecycle()
+    val isExecutingCommand by viewModel.isExecutingCommand.collectAsStateWithLifecycle()
 
-    AlarmsContent(alarms = alarms)
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Collect UI events for error feedback
+    LaunchedEffect(Unit) {
+        viewModel.uiEvents.collect { event ->
+            when (event) {
+                is AlarmsUiEvent.CommandError -> {
+                    snackbarHostState.showSnackbar(
+                        message = event.message,
+                        duration = SnackbarDuration.Short
+                    )
+                }
+                is AlarmsUiEvent.CommandSuccess -> {
+                    // Could show success feedback if desired
+                }
+            }
+        }
+    }
+
+    AlarmsContent(
+        alarms = alarms,
+        isConnected = isConnected,
+        isExecutingCommand = isExecutingCommand,
+        snackbarHostState = snackbarHostState,
+        onAcknowledge = viewModel::acknowledgeAlarm,
+        onClearLatched = viewModel::clearLatchedAlarms
+    )
 }
 
 @Composable
-private fun AlarmsContent(alarms: List<Alarm>) {
+private fun AlarmsContent(
+    alarms: List<Alarm>,
+    isConnected: Boolean = false,
+    isExecutingCommand: Boolean = false,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+    onAcknowledge: (String) -> Unit = {},
+    onClearLatched: () -> Unit = {}
+) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Active", "History")
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        Card(modifier = Modifier.fillMaxSize()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Alarms",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                TabRow(selectedTabIndex = selectedTab) {
-                    tabs.forEachIndexed { index, title ->
-                        Tab(
-                            selected = selectedTab == index,
-                            onClick = { selectedTab = index },
-                            text = { Text(title) }
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                val filteredAlarms = when (selectedTab) {
-                    0 -> alarms.filter { it.state == AlarmState.ACTIVE }
-                    else -> alarms
-                }
-
-                if (filteredAlarms.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            Card(modifier = Modifier.fillMaxSize()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "No alarms.",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "Alarms",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold
                         )
+
+                        // Clear Latched button
+                        val hasLatchedAlarms = alarms.any { it.isAcknowledged && it.state != AlarmState.ACTIVE }
+                        if (hasLatchedAlarms) {
+                            OutlinedButton(
+                                onClick = onClearLatched,
+                                enabled = isConnected && !isExecutingCommand
+                            ) {
+                                Text("Clear Latched")
+                            }
+                        }
                     }
-                } else {
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(filteredAlarms) { alarm ->
-                            AlarmRow(alarm = alarm)
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    TabRow(selectedTabIndex = selectedTab) {
+                        tabs.forEachIndexed { index, title ->
+                            Tab(
+                                selected = selectedTab == index,
+                                onClick = { selectedTab = index },
+                                text = { Text(title) }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    val filteredAlarms = when (selectedTab) {
+                        0 -> alarms.filter { it.state == AlarmState.ACTIVE }
+                        else -> alarms
+                    }
+
+                    if (filteredAlarms.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No alarms.",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(filteredAlarms) { alarm ->
+                                AlarmRow(
+                                    alarm = alarm,
+                                    canAcknowledge = isConnected && !isExecutingCommand,
+                                    onAcknowledge = { onAcknowledge(alarm.id) }
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+
+        // Snackbar for error feedback
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 
 @Composable
-private fun AlarmRow(alarm: Alarm) {
+private fun AlarmRow(
+    alarm: Alarm,
+    canAcknowledge: Boolean = false,
+    onAcknowledge: () -> Unit = {}
+) {
     val severityColor = when (alarm.severity) {
         AlarmSeverity.CRITICAL -> SemanticColors.Critical
         AlarmSeverity.ALARM -> SemanticColors.Alarm
@@ -165,8 +234,8 @@ private fun AlarmRow(alarm: Alarm) {
                     )
                 } else if (alarm.state == AlarmState.ACTIVE) {
                     OutlinedButton(
-                        onClick = { /* TODO: Stage 5 */ },
-                        enabled = false,
+                        onClick = onAcknowledge,
+                        enabled = canAcknowledge,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text("Acknowledge", style = MaterialTheme.typography.labelSmall)

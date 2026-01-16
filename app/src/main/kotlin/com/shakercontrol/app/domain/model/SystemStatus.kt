@@ -13,7 +13,8 @@ data class SystemStatus(
     val deviceName: String?,
     val rssiDbm: Int?,
     val firmwareVersion: String?,
-    val protocolVersion: Int?
+    val protocolVersion: Int?,
+    val capabilities: SubsystemCapabilities = SubsystemCapabilities.DEFAULT
 ) {
     val isMcuHeartbeatStale: Boolean
         get() = mcuHeartbeatAgeMs > MCU_STALE_THRESHOLD_MS
@@ -46,7 +47,8 @@ data class SystemStatus(
             deviceName = null,
             rssiDbm = null,
             firmwareVersion = null,
-            protocolVersion = null
+            protocolVersion = null,
+            capabilities = SubsystemCapabilities.DEFAULT
         )
     }
 }

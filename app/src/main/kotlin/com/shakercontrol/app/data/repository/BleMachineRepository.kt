@@ -706,4 +706,36 @@ class BleMachineRepository @Inject constructor(
             Result.failure(RuntimeException(detail))
         }
     }
+
+    override suspend fun acknowledgeAlarm(alarmId: String): Result<Unit> {
+        // For now, just update local state
+        // Real implementation would send ACK_ALARM command to MCU
+        val currentAlarms = _alarms.value.toMutableList()
+        val index = currentAlarms.indexOfFirst { it.id == alarmId }
+        if (index >= 0) {
+            currentAlarms[index] = currentAlarms[index].copy(isAcknowledged = true)
+            _alarms.value = currentAlarms
+        }
+        return Result.success(Unit)
+    }
+
+    override suspend fun clearLatchedAlarms(): Result<Unit> {
+        val id = sessionId ?: return Result.failure(IllegalStateException("No session"))
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.CLEAR_LATCHED_ALARMS,
+            payload = byteArrayOf() // No payload for this command
+        )
+
+        return if (ack?.status == AckStatus.OK) {
+            // Clear acknowledged alarms from local state
+            val currentAlarms = _alarms.value.filter {
+                it.state == AlarmState.ACTIVE && !it.isAcknowledged
+            }
+            _alarms.value = currentAlarms
+            Result.success(Unit)
+        } else {
+            Result.failure(RuntimeException("Clear alarms rejected: ${ack?.status}"))
+        }
+    }
 }

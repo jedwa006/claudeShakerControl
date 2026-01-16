@@ -377,4 +377,38 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
         }
         return Result.success(Unit)
     }
+
+    override suspend fun acknowledgeAlarm(alarmId: String): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+
+        // Simulate command delay
+        delay(200)
+
+        // Update alarm state
+        val currentAlarms = _alarms.value.toMutableList()
+        val index = currentAlarms.indexOfFirst { it.id == alarmId }
+        if (index >= 0) {
+            currentAlarms[index] = currentAlarms[index].copy(isAcknowledged = true)
+            _alarms.value = currentAlarms
+        }
+        return Result.success(Unit)
+    }
+
+    override suspend fun clearLatchedAlarms(): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+
+        // Simulate command delay
+        delay(200)
+
+        // Clear all acknowledged alarms that are no longer active
+        val currentAlarms = _alarms.value.filter {
+            it.state == AlarmState.ACTIVE && !it.isAcknowledged
+        }
+        _alarms.value = currentAlarms
+        return Result.success(Unit)
+    }
 }

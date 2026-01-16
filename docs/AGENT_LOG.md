@@ -449,8 +449,81 @@ Implement functional PID detail pages with real setpoint editing and mode contro
 
 ## Stage 5 — Capability-Bit Gating + Alarms
 
-**Date:** TBD
+**Date:** 2026-01-16
 **Branch:** `feature/stage-5-capabilities-alarms`
-**Status:** Not Started
+**Status:** Complete
 
-*(To be filled when Stage 5 begins)*
+### Scope Statement
+Implement subsystem capability model for UI gating and enable alarm acknowledgment functionality.
+
+### Features Implemented
+
+#### Subsystem Capabilities Model
+- `CapabilityLevel` enum: `REQUIRED`, `OPTIONAL`, `NOT_PRESENT`
+- `SubsystemCapabilities` data class with 8 subsystem bits:
+  - PID 1/2/3 controllers
+  - LN2 valve, door actuator, door switch
+  - Internal relay bank, external RS485 relay bank
+- `SubsystemStatus` enum for runtime status: `OK`, `OFFLINE`, `FAULT`
+- `StartGatingResult` for blocking start operations with reason
+- Capability parsing from MCU bits via `fromBits()`
+
+#### Start Gating Logic
+- `RunViewModel.startGating` flow combines connection state, machine state, and PID capability status
+- Start button disabled with reason tooltip when:
+  - Not connected
+  - Machine not in startable state (READY/PAUSED)
+  - Required subsystems offline or faulted
+- `ControlsSection` accepts `StartGatingResult` parameter for UI feedback
+
+#### Alarm Acknowledgment
+- Added `acknowledgeAlarm(alarmId)` to repository interface
+- Added `clearLatchedAlarms()` to repository interface
+- Implemented in both `BleMachineRepository` (BLE command 0x0030) and `MockMachineRepository`
+- `AlarmsViewModel` with:
+  - `isConnected` and `isExecutingCommand` states
+  - `AlarmsUiEvent` sealed class for command feedback
+  - Methods wire through to repository commands
+
+#### Alarms Screen Updates
+- Acknowledge button enabled when connected and alarm is active/unacknowledged
+- Clear Latched button appears when latched alarms exist
+- Snackbar host for error feedback
+- UI events collection for command success/failure
+
+### Protocol Details
+- `ACK_ALARM` command (0x0030): Sends alarm ID to acknowledge
+- `CLEAR_LATCHED` command (0x0031): Clears all acknowledged/cleared alarms
+- Both commands include session ID validation
+
+### Files Created
+- `domain/model/SubsystemCapabilities.kt` — 130 lines (capability model, gating result)
+
+### Files Modified
+- `domain/model/SystemStatus.kt` — Added `capabilities` field with default
+- `data/repository/MachineRepository.kt` — Added alarm command interface
+- `data/repository/BleMachineRepository.kt` — Implemented alarm commands
+- `data/repository/MockMachineRepository.kt` — Implemented alarm commands with simulated delay
+- `ui/run/RunViewModel.kt` — Added `startGating` flow
+- `ui/run/RunScreen.kt` — Passed `startGating` to content
+- `ui/run/RunSections.kt` — Updated `ControlsSection` signature
+- `ui/alarms/AlarmsViewModel.kt` — Full rewrite with command methods
+- `ui/alarms/AlarmsScreen.kt` — Enabled acknowledge/clear functionality
+
+### Tests Added
+- `AlarmsViewModelTest.kt` — 7 tests for acknowledge/clear commands and connection state
+
+### How to Test
+1. Build and install: `./gradlew installDebug`
+2. Navigate to Run screen
+3. (Mock mode) Start button should be enabled (mock defaults to LIVE)
+4. Navigate to Alarms screen
+5. (Mock mode) No alarms by default; add mock alarms to test acknowledge
+6. With alarms present, Acknowledge button should be enabled when connected
+7. Tap Acknowledge — should mark alarm as acknowledged
+8. Tap Clear Latched — should remove acknowledged/cleared alarms
+
+### Next Steps (Stage 6)
+1. Wire Devices screen to real BLE scanning/connecting
+2. Add reconnection logic on unexpected disconnect
+3. Surface session lease timeout warnings in UI
