@@ -213,11 +213,110 @@ Tested on Lenovo_Tab_Plus_11.5 emulator (2000×1200, Android 16):
 
 ## Stage 2 — BLE Foundation
 
-**Date:** TBD
+**Date:** 2026-01-16
 **Branch:** `feature/stage-2-ble-foundation`
-**Status:** Not Started
+**Status:** Complete
+**Merged to dev:** 2026-01-16 (commit f1e99b2)
 
-*(To be filled when Stage 2 begins)*
+### Scope Statement
+Implement complete BLE communication infrastructure: GATT UUIDs, wire protocol codec, BleManager for device operations, and BleMachineRepository implementing the MachineRepository interface with real BLE backend.
+
+### Architecture Implemented
+
+```
+app/src/main/kotlin/com/shakercontrol/app/
+├── data/
+│   ├── ble/
+│   │   ├── BleConstants.kt      # GATT UUIDs, message types, command IDs, enums
+│   │   ├── BleManager.kt        # BLE scan/connect/disconnect, GATT operations
+│   │   └── WireProtocol.kt      # Frame encoder/decoder, CRC-16, parsers
+│   └── repository/
+│       ├── BleMachineRepository.kt  # Real BLE implementation
+│       └── MockMachineRepository.kt # Mock (retained for testing)
+└── ui/devices/
+    ├── DevicesScreen.kt         # Real scan/connect UI
+    └── DevicesViewModel.kt      # ViewModel for BLE operations
+```
+
+### Key Implementation Details
+
+#### BleConstants
+- **Service UUID:** `F0C5B4D2-3D1E-4A27-9B8A-2F0B3C4D5E60`
+- **Characteristics:**
+  - Device Info: `...5E61` (read)
+  - Telemetry Stream: `...5E62` (notify, 10Hz)
+  - Command RX: `...5E63` (write)
+  - Events/ACKs: `...5E64` (notify)
+- **Enums:** MessageType, CommandId, AckStatus, EventSeverity, RunMode, StopMode, RelayState, ControllerMode
+
+#### WireProtocol
+- Frame layout: `proto_ver(1) | msg_type(1) | seq(2) | payload_len(2) | payload(N) | crc16(2)`
+- Little-endian byte order throughout
+- CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF, no reflection)
+- Parsers: TelemetryParser, CommandAckParser, EventParser
+- Builders: CommandPayloadBuilder for all command payloads
+
+#### BleManager
+- Singleton injected via Hilt
+- Scan with coroutine-based timeout (10s default)
+- Connect/disconnect with GATT callback handling
+- Notification setup for telemetry and events characteristics
+- Command sending with sequence number tracking
+- Flows: `telemetryFlow`, `eventFlow`, `ackFlow` for reactive updates
+- States: `DISCONNECTED`, `SCANNING`, `CONNECTING`, `CONNECTED`, `READY`
+
+#### BleMachineRepository
+- Implements full MachineRepository interface
+- Session management:
+  - `openSession()` sends OPEN_SESSION with client nonce
+  - Heartbeat coroutine sends KEEPALIVE every 1000ms
+  - Session ID tracking for authenticated commands
+- Telemetry mapping:
+  - PV/SV scaling: x10 (e.g., 123.4°C → 1234 in protocol)
+  - DI/RO bit unpacking to IoStatus
+  - Alarm bits to Alarm list
+- Command methods: startRun, stopRun, pauseRun, resumeRun, setRelay, setSv, setMode
+
+#### DevicesScreen
+- Real scan button with loading indicator
+- Device list showing name, address, RSSI with signal strength icon
+- Connect/disconnect per device
+- Connection state display (Disconnected/Scanning/Connecting/Connected/Ready)
+- Empty state when no devices found
+
+### Protocol Compliance
+Implementation follows `docs/MCU_docs/` specifications exactly:
+- GATT UUIDs from `80-gatt-uuids.md`
+- Frame format from `30-wire-protocol.md`
+- Command payloads from `90-command-catalog.md`
+- Session/lease model from `40-safety-heartbeat-and-policies.md`
+
+### Files Created This Stage
+- `data/ble/BleConstants.kt` — 209 lines
+- `data/ble/BleManager.kt` — 509 lines
+- `data/ble/WireProtocol.kt` — 425 lines
+- `data/repository/BleMachineRepository.kt` — 531 lines
+- `ui/devices/DevicesViewModel.kt` — 65 lines
+- Modified: `di/AppModule.kt`, `ui/devices/DevicesScreen.kt`
+- Total: ~2060 lines added
+
+### How to Test
+1. `./gradlew assembleDebug` — Build APK
+2. `./gradlew lintDebug` — Run lint checks
+3. Install on physical device with BLE
+4. Navigate to Devices screen, tap Scan
+5. (Requires ESP32 MCU running firmware to complete connection)
+
+### Known Limitations
+- BLE operations require physical device (emulator has limited BLE support)
+- Session lease timeout (3000ms) not yet surfaced in UI
+- No reconnection logic on unexpected disconnect (future stage)
+
+### Next Steps (Stage 3)
+1. Wire up Run screen to real commands (START_RUN, STOP_RUN, PAUSE_RUN, RESUME_RUN)
+2. Implement recipe transfer to MCU
+3. Display run progress from telemetry (phase, elapsed time)
+4. Handle ACK failures with user feedback
 
 ---
 

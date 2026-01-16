@@ -22,6 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mock data repository for UI development
 - Material 3 dark theme with semantic colors (Normal, Warning, Alarm, Stale)
 - Modal navigation drawer with screen selection
+- BLE communication infrastructure (Stage 2)
+  - BleConstants with GATT UUIDs, message types, command IDs
+  - WireProtocol frame encoder/decoder with CRC-16/CCITT-FALSE
+  - BleManager for scan/connect/disconnect operations
+  - BleMachineRepository implementing MachineRepository with BLE backend
+  - Session/lease management (OPEN_SESSION, KEEPALIVE at 1Hz)
+  - Telemetry, event, and ACK parsing
+- Real Devices screen with scan/connect functionality
+  - Device list showing name, address, RSSI
+  - Connection state display
 
 ### Infrastructure
 - Android project with Kotlin 2.0.21 + Jetpack Compose
