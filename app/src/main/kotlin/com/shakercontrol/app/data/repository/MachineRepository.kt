@@ -63,4 +63,8 @@ interface MachineRepository {
     // Service mode
     suspend fun enableServiceMode()
     suspend fun disableServiceMode()
+
+    // PID control commands
+    suspend fun setSetpoint(controllerId: Int, setpoint: Float): Result<Unit>
+    suspend fun setMode(controllerId: Int, mode: PidMode): Result<Unit>
 }

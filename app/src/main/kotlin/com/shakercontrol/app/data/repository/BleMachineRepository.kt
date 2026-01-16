@@ -640,4 +640,70 @@ class BleMachineRepository @Inject constructor(
             isServiceModeEnabled = false
         )
     }
+
+    override suspend fun setSetpoint(controllerId: Int, setpoint: Float): Result<Unit> {
+        val id = sessionId ?: return Result.failure(IllegalStateException("No session"))
+
+        // Scale setpoint by 10 (protocol uses x10 format) and convert to Short
+        val svX10 = (setpoint * 10).toInt().toShort()
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.SET_SV,
+            payload = CommandPayloadBuilder.setSv(controllerId, svX10)
+        )
+
+        return if (ack?.status == AckStatus.OK) {
+            // Update local state optimistically
+            val currentPidList = _pidData.value.toMutableList()
+            val index = currentPidList.indexOfFirst { it.controllerId == controllerId }
+            if (index >= 0) {
+                currentPidList[index] = currentPidList[index].copy(setpointValue = setpoint)
+                _pidData.value = currentPidList
+            }
+            Result.success(Unit)
+        } else {
+            val detail = when (ack?.detail) {
+                AckDetail.CONTROLLER_OFFLINE -> "Controller offline"
+                AckDetail.PARAM_OUT_OF_RANGE -> "Value out of range"
+                else -> "Rejected: ${ack?.status}"
+            }
+            Result.failure(RuntimeException(detail))
+        }
+    }
+
+    override suspend fun setMode(controllerId: Int, mode: PidMode): Result<Unit> {
+        val id = sessionId ?: return Result.failure(IllegalStateException("No session"))
+
+        val controllerMode = when (mode) {
+            PidMode.STOP -> ControllerMode.STOP
+            PidMode.MANUAL -> ControllerMode.MANUAL
+            PidMode.AUTO -> ControllerMode.AUTO
+            PidMode.PROGRAM -> ControllerMode.PROGRAM
+        }
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.SET_MODE,
+            payload = CommandPayloadBuilder.setMode(controllerId, controllerMode)
+        )
+
+        return if (ack?.status == AckStatus.OK) {
+            // Update local state optimistically
+            val currentPidList = _pidData.value.toMutableList()
+            val index = currentPidList.indexOfFirst { it.controllerId == controllerId }
+            if (index >= 0) {
+                currentPidList[index] = currentPidList[index].copy(
+                    mode = mode,
+                    isEnabled = mode != PidMode.STOP
+                )
+                _pidData.value = currentPidList
+            }
+            Result.success(Unit)
+        } else {
+            val detail = when (ack?.detail) {
+                AckDetail.CONTROLLER_OFFLINE -> "Controller offline"
+                else -> "Rejected: ${ack?.status}"
+            }
+            Result.failure(RuntimeException(detail))
+        }
+    }
 }

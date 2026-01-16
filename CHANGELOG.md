@@ -38,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Command feedback with error snackbar on failures
   - Loading indicator while commands are executing
   - Buttons disabled during command execution
+- PID detail pages with real controls (Stage 4)
+  - Setpoint editing with text input and Apply button
+  - Mode control with segmented button (Stop/Manual/Auto)
+  - Command feedback with loading indicators and error snackbar
+  - Controls disabled when not connected
+  - Color-coded mode selection
+  - SET_SV and SET_MODE BLE commands implemented
 
 ### Fixed
 - PAUSE_RUN command now uses correct command ID (0x0104) instead of STOP_RUN
