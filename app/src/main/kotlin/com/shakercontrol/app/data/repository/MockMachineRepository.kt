@@ -1,0 +1,228 @@
+package com.shakercontrol.app.data.repository
+
+import com.shakercontrol.app.domain.model.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlin.time.Duration.Companion.seconds
+
+/**
+ * Mock implementation of MachineRepository for UI development and testing.
+ * Provides realistic-looking data without BLE connection.
+ */
+@Singleton
+class MockMachineRepository @Inject constructor() : MachineRepository {
+
+    private val _systemStatus = MutableStateFlow(createMockSystemStatus())
+    override val systemStatus: StateFlow<SystemStatus> = _systemStatus.asStateFlow()
+
+    private val _pidData = MutableStateFlow(createMockPidData())
+    override val pidData: StateFlow<List<PidData>> = _pidData.asStateFlow()
+
+    private val _recipe = MutableStateFlow(Recipe.DEFAULT)
+    override val recipe: StateFlow<Recipe> = _recipe.asStateFlow()
+
+    private val _runProgress = MutableStateFlow<RunProgress?>(null)
+    override val runProgress: StateFlow<RunProgress?> = _runProgress.asStateFlow()
+
+    private val _alarms = MutableStateFlow(createMockAlarms())
+    override val alarms: StateFlow<List<Alarm>> = _alarms.asStateFlow()
+
+    private val _ioStatus = MutableStateFlow(IoStatus(digitalInputs = 0b00000101, relayOutputs = 0b00000001))
+    override val ioStatus: StateFlow<IoStatus> = _ioStatus.asStateFlow()
+
+    private val _interlockStatus = MutableStateFlow(createMockInterlockStatus())
+    override val interlockStatus: StateFlow<InterlockStatus> = _interlockStatus.asStateFlow()
+
+    private fun createMockSystemStatus() = SystemStatus(
+        connectionState = ConnectionState.LIVE,
+        machineState = MachineState.READY,
+        mcuHeartbeatAgeMs = 120,
+        bleHeartbeatAgeMs = 80,
+        alarmSummary = AlarmSummary(totalCount = 0, highCount = 0, highestSeverity = null),
+        isServiceModeEnabled = false,
+        deviceName = "SYS-CTRL-001",
+        rssiDbm = -58,
+        firmwareVersion = "1.0.0",
+        protocolVersion = 1
+    )
+
+    private fun createMockPidData() = listOf(
+        PidData(
+            controllerId = 1,
+            name = "Axle bearings",
+            processValue = 25.4f,
+            setpointValue = 30.0f,
+            outputPercent = 45.6f,
+            mode = PidMode.AUTO,
+            isEnabled = true,
+            isOutputActive = true,
+            hasFault = false,
+            ageMs = 120,
+            capabilityLevel = CapabilityLevel.REQUIRED
+        ),
+        PidData(
+            controllerId = 2,
+            name = "Orbital bearings",
+            processValue = 28.1f,
+            setpointValue = 30.0f,
+            outputPercent = 32.1f,
+            mode = PidMode.AUTO,
+            isEnabled = true,
+            isOutputActive = true,
+            hasFault = false,
+            ageMs = 120,
+            capabilityLevel = CapabilityLevel.REQUIRED
+        ),
+        PidData(
+            controllerId = 3,
+            name = "LN2 line",
+            processValue = -180.5f,
+            setpointValue = -185.0f,
+            outputPercent = 0.0f,
+            mode = PidMode.AUTO,
+            isEnabled = true,
+            isOutputActive = false,
+            hasFault = false,
+            ageMs = 120,
+            capabilityLevel = CapabilityLevel.OPTIONAL
+        )
+    )
+
+    private fun createMockAlarms(): List<Alarm> = emptyList()
+
+    private fun createMockInterlockStatus() = InterlockStatus(
+        isEStopActive = false,
+        isDoorLocked = true,
+        isLn2Present = true,
+        isPowerEnabled = true,
+        isHeatersEnabled = false,
+        isMotorEnabled = false
+    )
+
+    override suspend fun startScan() {
+        _systemStatus.value = _systemStatus.value.copy(
+            connectionState = ConnectionState.SCANNING
+        )
+        delay(2000)
+        _systemStatus.value = _systemStatus.value.copy(
+            connectionState = ConnectionState.DEVICE_SELECTED
+        )
+    }
+
+    override suspend fun stopScan() {
+        if (_systemStatus.value.connectionState == ConnectionState.SCANNING) {
+            _systemStatus.value = _systemStatus.value.copy(
+                connectionState = ConnectionState.DISCONNECTED
+            )
+        }
+    }
+
+    override suspend fun connect(deviceAddress: String) {
+        _systemStatus.value = _systemStatus.value.copy(
+            connectionState = ConnectionState.CONNECTING
+        )
+        delay(500)
+        _systemStatus.value = _systemStatus.value.copy(
+            connectionState = ConnectionState.DISCOVERING
+        )
+        delay(500)
+        _systemStatus.value = _systemStatus.value.copy(
+            connectionState = ConnectionState.SUBSCRIBING
+        )
+        delay(300)
+        _systemStatus.value = _systemStatus.value.copy(
+            connectionState = ConnectionState.SESSION_OPENING
+        )
+        delay(200)
+        _systemStatus.value = createMockSystemStatus()
+    }
+
+    override suspend fun disconnect() {
+        _systemStatus.value = _systemStatus.value.copy(
+            connectionState = ConnectionState.DISCONNECTED,
+            deviceName = null,
+            rssiDbm = null
+        )
+        _runProgress.value = null
+    }
+
+    override suspend fun forgetDevice() {
+        disconnect()
+    }
+
+    override suspend fun startRun(): Result<Unit> {
+        if (!_systemStatus.value.machineState.canStart) {
+            return Result.failure(IllegalStateException("Cannot start: machine not ready"))
+        }
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Cannot start: not connected"))
+        }
+
+        _systemStatus.value = _systemStatus.value.copy(
+            machineState = MachineState.RUNNING
+        )
+        _runProgress.value = RunProgress(
+            currentCycle = 1,
+            totalCycles = _recipe.value.cycleCount,
+            currentPhase = RunPhase.MILLING,
+            phaseElapsed = 0.seconds,
+            phaseRemaining = _recipe.value.millingDuration,
+            totalRemaining = _recipe.value.totalRuntime
+        )
+        return Result.success(Unit)
+    }
+
+    override suspend fun pauseRun(): Result<Unit> {
+        if (!_systemStatus.value.machineState.canPause) {
+            return Result.failure(IllegalStateException("Cannot pause: machine not running"))
+        }
+
+        _systemStatus.value = _systemStatus.value.copy(
+            machineState = MachineState.PAUSED
+        )
+        return Result.success(Unit)
+    }
+
+    override suspend fun resumeRun(): Result<Unit> {
+        if (!_systemStatus.value.machineState.canResume) {
+            return Result.failure(IllegalStateException("Cannot resume: machine not paused"))
+        }
+
+        _systemStatus.value = _systemStatus.value.copy(
+            machineState = MachineState.RUNNING
+        )
+        return Result.success(Unit)
+    }
+
+    override suspend fun stopRun(): Result<Unit> {
+        if (!_systemStatus.value.machineState.canStop) {
+            return Result.failure(IllegalStateException("Cannot stop: machine not operating"))
+        }
+
+        _systemStatus.value = _systemStatus.value.copy(
+            machineState = MachineState.IDLE
+        )
+        _runProgress.value = null
+        return Result.success(Unit)
+    }
+
+    override suspend fun updateRecipe(recipe: Recipe) {
+        _recipe.value = recipe
+    }
+
+    override suspend fun enableServiceMode() {
+        _systemStatus.value = _systemStatus.value.copy(
+            isServiceModeEnabled = true
+        )
+    }
+
+    override suspend fun disableServiceMode() {
+        _systemStatus.value = _systemStatus.value.copy(
+            isServiceModeEnabled = false
+        )
+    }
+}
