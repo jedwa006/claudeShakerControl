@@ -228,18 +228,20 @@ private fun RunProgressDisplay(runProgress: RunProgress) {
 fun ControlsSection(
     machineState: MachineState,
     connectionState: ConnectionState,
+    isExecutingCommand: Boolean = false,
     onStart: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val canStart = machineState.canStart && connectionState == ConnectionState.LIVE
-    val canPause = machineState.canPause
-    val canResume = machineState.canResume
-    val canStop = machineState.canStop
+    val canStart = machineState.canStart && connectionState == ConnectionState.LIVE && !isExecutingCommand
+    val canPause = machineState.canPause && !isExecutingCommand
+    val canResume = machineState.canResume && !isExecutingCommand
+    val canStop = machineState.canStop && !isExecutingCommand
 
     val disabledReason = when {
+        isExecutingCommand -> "Sending command..."
         connectionState != ConnectionState.LIVE -> "Cannot start: not connected."
         !machineState.canStart && !machineState.isOperating -> "Cannot start: machine not ready."
         else -> null
@@ -247,11 +249,23 @@ fun ControlsSection(
 
     Card(modifier = modifier) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = "Controls",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Controls",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (isExecutingCommand) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(16.dp))
 
             Row(

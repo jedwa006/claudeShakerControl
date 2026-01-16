@@ -5,11 +5,23 @@ import androidx.lifecycle.viewModelScope
 import com.shakercontrol.app.data.repository.MachineRepository
 import com.shakercontrol.app.domain.model.*
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/**
+ * UI events from run commands.
+ */
+sealed class RunUiEvent {
+    data class CommandError(val message: String) : RunUiEvent()
+    data object CommandSuccess : RunUiEvent()
+}
 
 @HiltViewModel
 class RunViewModel @Inject constructor(
@@ -58,6 +70,14 @@ class RunViewModel @Inject constructor(
             )
         )
 
+    // Command execution state
+    private val _isExecutingCommand = MutableStateFlow(false)
+    val isExecutingCommand: StateFlow<Boolean> = _isExecutingCommand.asStateFlow()
+
+    // UI events (errors, success messages)
+    private val _uiEvents = MutableSharedFlow<RunUiEvent>()
+    val uiEvents = _uiEvents.asSharedFlow()
+
     fun updateRecipe(recipe: Recipe) {
         viewModelScope.launch {
             machineRepository.updateRecipe(recipe)
@@ -66,25 +86,66 @@ class RunViewModel @Inject constructor(
 
     fun startRun() {
         viewModelScope.launch {
-            machineRepository.startRun()
+            _isExecutingCommand.value = true
+            val result = machineRepository.startRun()
+            _isExecutingCommand.value = false
+
+            result.onFailure { error ->
+                _uiEvents.emit(RunUiEvent.CommandError(
+                    formatErrorMessage("Start", error)
+                ))
+            }
         }
     }
 
     fun pauseRun() {
         viewModelScope.launch {
-            machineRepository.pauseRun()
+            _isExecutingCommand.value = true
+            val result = machineRepository.pauseRun()
+            _isExecutingCommand.value = false
+
+            result.onFailure { error ->
+                _uiEvents.emit(RunUiEvent.CommandError(
+                    formatErrorMessage("Pause", error)
+                ))
+            }
         }
     }
 
     fun resumeRun() {
         viewModelScope.launch {
-            machineRepository.resumeRun()
+            _isExecutingCommand.value = true
+            val result = machineRepository.resumeRun()
+            _isExecutingCommand.value = false
+
+            result.onFailure { error ->
+                _uiEvents.emit(RunUiEvent.CommandError(
+                    formatErrorMessage("Resume", error)
+                ))
+            }
         }
     }
 
     fun stopRun() {
         viewModelScope.launch {
-            machineRepository.stopRun()
+            _isExecutingCommand.value = true
+            val result = machineRepository.stopRun()
+            _isExecutingCommand.value = false
+
+            result.onFailure { error ->
+                _uiEvents.emit(RunUiEvent.CommandError(
+                    formatErrorMessage("Stop", error)
+                ))
+            }
+        }
+    }
+
+    private fun formatErrorMessage(command: String, error: Throwable): String {
+        val reason = error.message ?: "Unknown error"
+        return when {
+            reason.contains("No session") -> "$command failed: Not connected to controller."
+            reason.contains("rejected") -> "$command rejected by controller."
+            else -> "$command failed: $reason"
         }
     }
 }

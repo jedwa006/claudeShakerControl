@@ -225,6 +225,22 @@ object CommandPayloadBuilder {
      */
     fun setMode(controllerId: Int, mode: ControllerMode): ByteArray =
         byteArrayOf(controllerId.toByte(), mode.code)
+
+    /**
+     * PAUSE_RUN payload: session_id(u32)
+     */
+    fun pauseRun(sessionId: Int): ByteArray =
+        ByteBuffer.allocate(4)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(sessionId)
+            .array()
+
+    /**
+     * RESUME_RUN payload: session_id(u32)
+     * Uses START_RUN command with NORMAL mode to resume from pause
+     */
+    fun resumeRun(sessionId: Int): ByteArray =
+        startRun(sessionId, RunMode.NORMAL)
 }
 
 /**

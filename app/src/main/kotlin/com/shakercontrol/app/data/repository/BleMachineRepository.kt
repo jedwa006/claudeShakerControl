@@ -31,6 +31,11 @@ class BleMachineRepository @Inject constructor(
     private var leaseMs: Int = BleConstants.DEFAULT_LEASE_MS
     private var heartbeatJob: Job? = null
 
+    // Run progress timer
+    private var runTimerJob: Job? = null
+    private var runStartTime: Long = 0L
+    private var pausedElapsedMs: Long = 0L
+
     // Internal mutable state
     private val _systemStatus = MutableStateFlow(SystemStatus.DISCONNECTED)
     private val _pidData = MutableStateFlow<List<PidData>>(emptyList())
@@ -182,6 +187,108 @@ class BleMachineRepository @Inject constructor(
 
         // Update heartbeat time optimistically
         lastBleHeartbeatTime = System.currentTimeMillis()
+    }
+
+    private fun startRunTimer() {
+        runTimerJob?.cancel()
+        runStartTime = System.currentTimeMillis()
+        runTimerJob = scope.launch {
+            while (isActive) {
+                delay(1000) // Update every second
+                updateRunProgress()
+            }
+        }
+    }
+
+    private fun pauseRunTimer() {
+        runTimerJob?.cancel()
+        runTimerJob = null
+        // Save the elapsed time when paused
+        pausedElapsedMs += System.currentTimeMillis() - runStartTime
+    }
+
+    private fun resumeRunTimer() {
+        runTimerJob?.cancel()
+        runStartTime = System.currentTimeMillis()
+        runTimerJob = scope.launch {
+            while (isActive) {
+                delay(1000)
+                updateRunProgress()
+            }
+        }
+    }
+
+    private fun stopRunTimer() {
+        runTimerJob?.cancel()
+        runTimerJob = null
+        pausedElapsedMs = 0L
+        runStartTime = 0L
+    }
+
+    private fun updateRunProgress() {
+        val currentRecipe = _recipe.value
+        val currentProgress = _runProgress.value ?: return
+
+        // Calculate total elapsed time including any paused time
+        val totalElapsedMs = pausedElapsedMs + (System.currentTimeMillis() - runStartTime)
+        val totalElapsed = totalElapsedMs.toInt().coerceAtLeast(0).seconds / 1000
+
+        // Calculate which cycle and phase we're in
+        val millingMs = currentRecipe.millingDuration.inWholeMilliseconds
+        val holdMs = currentRecipe.holdDuration.inWholeMilliseconds
+        val cycleMs = millingMs + holdMs
+        val totalCycles = currentRecipe.cycleCount
+
+        // Determine current position
+        var remainingMs = totalElapsedMs
+        var currentCycle = 1
+        var currentPhase = RunPhase.MILLING
+        var phaseElapsedMs = 0L
+
+        for (cycle in 1..totalCycles) {
+            currentCycle = cycle
+
+            // Milling phase
+            if (remainingMs < millingMs) {
+                currentPhase = RunPhase.MILLING
+                phaseElapsedMs = remainingMs
+                break
+            }
+            remainingMs -= millingMs
+
+            // Hold phase (no hold after last cycle)
+            if (cycle < totalCycles) {
+                if (remainingMs < holdMs) {
+                    currentPhase = RunPhase.HOLDING
+                    phaseElapsedMs = remainingMs
+                    break
+                }
+                remainingMs -= holdMs
+            } else {
+                // Run complete
+                stopRunTimer()
+                _runProgress.value = null
+                val currentStatus = _systemStatus.value
+                _systemStatus.value = currentStatus.copy(
+                    machineState = MachineState.IDLE
+                )
+                return
+            }
+        }
+
+        // Calculate remaining times
+        val phaseDuration = if (currentPhase == RunPhase.MILLING) millingMs else holdMs
+        val phaseRemainingMs = (phaseDuration - phaseElapsedMs).coerceAtLeast(0)
+        val totalRemainingMs = (currentRecipe.totalRuntime.inWholeMilliseconds - totalElapsedMs).coerceAtLeast(0)
+
+        _runProgress.value = RunProgress(
+            currentCycle = currentCycle,
+            totalCycles = totalCycles,
+            currentPhase = currentPhase,
+            phaseElapsed = (phaseElapsedMs / 1000).seconds,
+            phaseRemaining = (phaseRemainingMs / 1000).seconds,
+            totalRemaining = (totalRemainingMs / 1000).seconds
+        )
     }
 
     private fun processTelemetry(snapshot: TelemetryParser.TelemetrySnapshot) {
@@ -435,6 +542,7 @@ class BleMachineRepository @Inject constructor(
 
         return if (ack?.status == AckStatus.OK) {
             val currentRecipe = _recipe.value
+            pausedElapsedMs = 0L  // Reset pause accumulator
             _runProgress.value = RunProgress(
                 currentCycle = 1,
                 totalCycles = currentRecipe.cycleCount,
@@ -447,6 +555,7 @@ class BleMachineRepository @Inject constructor(
             _systemStatus.value = currentStatus.copy(
                 machineState = MachineState.RUNNING
             )
+            startRunTimer()  // Start the countdown timer
             Result.success(Unit)
         } else {
             Result.failure(RuntimeException("Start rejected: ${ack?.status}"))
@@ -458,10 +567,11 @@ class BleMachineRepository @Inject constructor(
 
         val ack = bleManager.sendCommand(
             cmdId = CommandId.PAUSE_RUN,
-            payload = CommandPayloadBuilder.stopRun(id, StopMode.NORMAL_STOP)
+            payload = CommandPayloadBuilder.pauseRun(id)
         )
 
         return if (ack?.status == AckStatus.OK) {
+            pauseRunTimer()  // Pause the countdown timer
             val currentStatus = _systemStatus.value
             _systemStatus.value = currentStatus.copy(
                 machineState = MachineState.PAUSED
@@ -481,6 +591,7 @@ class BleMachineRepository @Inject constructor(
         )
 
         return if (ack?.status == AckStatus.OK) {
+            resumeRunTimer()  // Resume the countdown timer
             val currentStatus = _systemStatus.value
             _systemStatus.value = currentStatus.copy(
                 machineState = MachineState.RUNNING
@@ -500,6 +611,7 @@ class BleMachineRepository @Inject constructor(
         )
 
         return if (ack?.status == AckStatus.OK) {
+            stopRunTimer()  // Stop the countdown timer
             _runProgress.value = null
             val currentStatus = _systemStatus.value
             _systemStatus.value = currentStatus.copy(
