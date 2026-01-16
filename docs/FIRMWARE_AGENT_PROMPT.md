@@ -19,11 +19,17 @@ Use this prompt to spawn a parallel Claude agent for ESP32 firmware development.
 
 **NOT WORKING - YOUR TASK**:
 
-❌ **SET_RELAY (0x0001) command is not being handled**
+❌ **SET_RELAY (0x0001) command is not being handled** (Priority 1)
+❌ **SET_RELAY_MASK (0x0002) command is not being handled** (Priority 1)
 ❌ **SET_SV (0x0020) command is not being handled** (optional for v0)
 ❌ **SET_MODE (0x0021) command is not being handled** (optional for v0)
 
-The Android app can now establish a session and maintain it with keepalives. However, when the user tries to control relay outputs from the I/O Control screen, the firmware returns what appears to be a rejection (visible as "NO ARGS" toast in the app). The app needs SET_RELAY implemented to control the machine.
+The Android app can now establish a session and maintain it with keepalives. However, when the user tries to control relay outputs from the I/O Control screen, the firmware returns what appears to be a rejection (visible as "NO ARGS" toast in the app). The app needs SET_RELAY and SET_RELAY_MASK implemented to control the machine.
+
+**Why SET_RELAY_MASK?** The app uses SET_RELAY_MASK for atomic multi-relay operations needed for:
+- Safety interlock states (multiple relays must change together)
+- State machine automation (e.g., "motor enabled" requires several relays)
+- Defined system states where relay combinations must be atomic
 
 ---
 
@@ -110,6 +116,70 @@ Expected ACK:
 5. Update ro_bits in telemetry to reflect new state
 6. Send ACK with status=OK or appropriate error
 
+### Priority 1b: SET_RELAY_MASK (0x0002)
+
+Atomically sets multiple relays in a single operation. Used for safety interlocks and state machine transitions where multiple relays must change together.
+
+#### Command Frame Structure
+
+```
+COMMAND frame (msg_type=0x10):
+| proto_ver (u8) | msg_type=0x10 | seq (u16) | payload_len (u16) | payload | crc16 (u16) |
+
+Payload for SET_RELAY_MASK:
+| cmd_id=0x0002 (u16) | flags=0x0000 (u16) | mask (u8) | values (u8) |
+```
+
+- **mask**: Bitmask of which channels to affect (bit 0 = RO1, ..., bit 7 = RO8)
+- **values**: Target state for each channel (0=OFF, 1=ON for each bit)
+
+Only channels with their mask bit set will be modified. Channels with mask bit 0 remain unchanged.
+
+#### Example Frame (Hex)
+
+Android app sends SET_RELAY_MASK to turn ON RO1+RO2, turn OFF RO3 (mask=0x07, values=0x03):
+```
+01 10 XX XX 06 00 02 00 00 00 07 03 CC CC
+│  │  │     │     │        │  │  └─ crc16
+│  │  │     │     │        │  └─ values=0x03 (RO1=ON, RO2=ON, RO3=OFF)
+│  │  │     │     │        └─ mask=0x07 (affect RO1, RO2, RO3)
+│  │  │     │     └─ cmd_id=0x0002, flags=0x0000
+│  │  │     └─ payload_len=6
+│  │  └─ seq
+│  └─ msg_type=COMMAND
+└─ proto_ver
+```
+
+Expected ACK (same format as SET_RELAY):
+```
+01 11 YY YY 07 00 XX XX 02 00 00 00 00 CC CC
+│  │  │     │     │     │     │  │     └─ crc16
+│  │  │     │     │     │     │  └─ detail=none
+│  │  │     │     │     │     └─ status=OK
+│  │  │     │     │     └─ cmd_id=0x0002
+│  │  │     │     └─ acked_seq (from command)
+│  │  │     └─ payload_len=7
+│  │  └─ seq (your counter)
+│  └─ msg_type=COMMAND_ACK
+└─ proto_ver
+```
+
+#### Implementation Notes
+
+1. Parse mask and values from command payload
+2. Validate mask is non-zero (at least one channel affected)
+3. Validate session is active (if session enforcement is enabled)
+4. **Atomically** apply changes: for each bit position where mask bit is 1, set relay to corresponding values bit
+5. Update ro_bits in telemetry to reflect new state
+6. Send ACK with status=OK or appropriate error
+
+#### Mask/Values Logic (pseudocode)
+
+```c
+// new_ro_bits = (current_ro_bits AND NOT mask) OR (values AND mask)
+uint8_t new_ro_bits = (current_ro_bits & ~mask) | (values & mask);
+```
+
 ### Priority 2 (Optional): SET_SV (0x0020) and SET_MODE (0x0021)
 
 These control the PID temperature controllers. Lower priority for v0.
@@ -172,10 +242,12 @@ Read these docs in the firmware repo:
 
 ## Android App Code Reference
 
-See how the app sends SET_RELAY:
+See how the app sends SET_RELAY and SET_RELAY_MASK:
 - `BleMachineRepository.kt:829-858` - setRelay() function
+- `BleMachineRepository.kt:860-887` - setRelayMask() function
 - `WireProtocol.kt:210-211` - setRelay payload builder
-- `BleConstants.kt:57` - SET_RELAY = 0x0001
+- `WireProtocol.kt:213-221` - setRelayMask payload builder
+- `BleConstants.kt:57-58` - SET_RELAY = 0x0001, SET_RELAY_MASK = 0x0002
 
 ---
 

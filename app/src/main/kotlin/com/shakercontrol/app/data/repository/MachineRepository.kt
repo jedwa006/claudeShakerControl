@@ -75,6 +75,14 @@ interface MachineRepository {
     // I/O commands
     suspend fun setRelay(channel: Int, on: Boolean): Result<Unit>
 
+    /**
+     * Atomically set multiple relays in a single operation.
+     * @param mask Bitmask of which channels to affect (bit 0 = RO1, ..., bit 7 = RO8)
+     * @param values Target state for each channel (0=OFF, 1=ON for each bit)
+     * Only channels with their mask bit set will be modified.
+     */
+    suspend fun setRelayMask(mask: Int, values: Int): Result<Unit>
+
     // Simulation mode for testing (service mode only)
     val isSimulationEnabled: StateFlow<Boolean>
     suspend fun setSimulationEnabled(enabled: Boolean)

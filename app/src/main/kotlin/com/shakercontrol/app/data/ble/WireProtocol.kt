@@ -211,6 +211,16 @@ object CommandPayloadBuilder {
         byteArrayOf(relayIndex.toByte(), state.code)
 
     /**
+     * SET_RELAY_MASK payload: mask(u8), values(u8)
+     * Atomically sets multiple relays in a single operation.
+     * - mask: bitmask of which channels to affect (bit 0 = RO1, ..., bit 7 = RO8)
+     * - values: target state for each channel (0=OFF, 1=ON for each bit)
+     * Only channels with their mask bit set will be modified.
+     */
+    fun setRelayMask(mask: Int, values: Int): ByteArray =
+        byteArrayOf((mask and 0xFF).toByte(), (values and 0xFF).toByte())
+
+    /**
      * SET_SV payload: controller_id(u8 1..3), sv_x10(i16)
      */
     fun setSv(controllerId: Int, svX10: Short): ByteArray =

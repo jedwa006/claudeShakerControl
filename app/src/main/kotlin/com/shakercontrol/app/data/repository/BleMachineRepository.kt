@@ -857,6 +857,35 @@ class BleMachineRepository @Inject constructor(
         }
     }
 
+    override suspend fun setRelayMask(mask: Int, values: Int): Result<Unit> {
+        require(mask in 0..0xFF) { "Mask must be 0-255" }
+        require(values in 0..0xFF) { "Values must be 0-255" }
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.SET_RELAY_MASK,
+            payload = CommandPayloadBuilder.setRelayMask(mask, values)
+        )
+
+        return if (ack?.status == AckStatus.OK) {
+            // Update local state optimistically for all channels in the mask
+            val current = _ioStatus.value
+            // Clear bits where mask is set, then set new values
+            val clearedBits = current.relayOutputs and mask.inv()
+            val newBits = clearedBits or (values and mask)
+            _ioStatus.value = current.copy(relayOutputs = newBits)
+            Log.d(TAG, "Relay mask applied: mask=0x${mask.toString(16)}, values=0x${values.toString(16)}")
+            Result.success(Unit)
+        } else {
+            val detail = when (ack?.detail) {
+                AckDetail.SESSION_INVALID -> "Session invalid"
+                AckDetail.INTERLOCK_OPEN -> "Interlock open"
+                else -> "Rejected: ${ack?.status}"
+            }
+            Log.w(TAG, "setRelayMask failed: $detail")
+            Result.failure(RuntimeException(detail))
+        }
+    }
+
     override suspend fun setSimulationEnabled(enabled: Boolean) {
         _isSimulationEnabled.value = enabled
         if (!enabled) {

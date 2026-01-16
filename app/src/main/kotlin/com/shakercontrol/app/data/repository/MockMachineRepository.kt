@@ -438,6 +438,25 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
         return Result.success(Unit)
     }
 
+    override suspend fun setRelayMask(mask: Int, values: Int): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        require(mask in 0..0xFF) { "Mask must be 0-255" }
+        require(values in 0..0xFF) { "Values must be 0-255" }
+
+        // Simulate command delay
+        delay(100)
+
+        // Update relay state atomically
+        val current = _ioStatus.value
+        // Clear bits where mask is set, then set new values
+        val clearedBits = current.relayOutputs and mask.inv()
+        val newBits = clearedBits or (values and mask)
+        _ioStatus.value = current.copy(relayOutputs = newBits)
+        return Result.success(Unit)
+    }
+
     override suspend fun setSimulationEnabled(enabled: Boolean) {
         _isSimulationEnabled.value = enabled
         if (!enabled) {
