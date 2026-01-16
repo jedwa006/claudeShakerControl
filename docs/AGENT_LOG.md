@@ -714,3 +714,75 @@ ui/
 1. Add recipe persistence and SD card management
 2. Implement recipe transfer to MCU
 3. Add QR code recipe import
+
+---
+
+## BLE Integration Testing
+
+**Date:** 2026-01-16
+**Branch:** `dev`
+**Status:** Complete
+
+### Scope Statement
+Fix BLE communication issues discovered during real-device testing with ESP32 firmware. Add comprehensive unit tests for wire protocol and parsers.
+
+### Issues Fixed
+
+| Issue | Symptom | Root Cause | Fix |
+|-------|---------|------------|-----|
+| OPEN_SESSION failures | ACK returned null intermittently | GATT not fully stable when CONNECTED emitted | 200ms delay before openSession() |
+| Device name showing "not connected" | Diagnostics page showed wrong name | Device name not tracked after connection | Added connectedDevice collector to BleMachineRepository |
+| RSSI showing N/A | Diagnostics showed no signal strength | RSSI polling only started after successful session | Fixed by resolving session timing issue |
+| Firmware version "Unknown" | Diagnostics showed unknown | Device Info characteristic read but not parsed | Added DeviceInfo parser with StateFlow |
+| Protocol version "Unknown" | Diagnostics showed unknown | Same as above | Same fix |
+
+### Features Implemented
+
+#### Device Info Parsing
+- `DeviceInfo` data class with `parse()` function for 12-byte characteristic
+- Layout: `proto_ver(u8) + fw_major(u8) + fw_minor(u8) + fw_patch(u8) + build_id(u32) + cap_bits(u32)`
+- `BleManager.deviceInfo` StateFlow exposes parsed info
+- `BleMachineRepository` wires to `SystemStatus.firmwareVersion` and `protocolVersion`
+
+#### Unit Tests Added
+- `DeviceInfoTest.kt` - 12 tests for Device Info characteristic parsing
+- `WireProtocolTest.kt` - 20 tests for CRC-16 and frame encoding/decoding
+- `ParserTest.kt` - 35 tests for telemetry, ACK, event, and payload parsing
+- Total: 87 unit tests, all passing
+
+### Files Created
+- `app/src/test/kotlin/com/shakercontrol/app/data/ble/DeviceInfoTest.kt`
+- `app/src/test/kotlin/com/shakercontrol/app/data/ble/WireProtocolTest.kt`
+- `app/src/test/kotlin/com/shakercontrol/app/data/ble/ParserTest.kt`
+- `CLAUDE.md` - Project guide with UI test coordinates
+
+### Files Modified
+- `data/ble/BleConstants.kt` - Added DeviceInfo data class and parser
+- `data/ble/BleManager.kt` - Added deviceInfo StateFlow, parsing in onCharacteristicRead
+- `data/repository/BleMachineRepository.kt` - Added 200ms delay, device info and name collectors
+- `docs/FIRMWARE_AGENT_PROMPT.md` - Updated with testing status and current issues
+
+### How to Test
+1. `./gradlew test` - Run all 87 unit tests
+2. With real ESP32 MCU:
+   - Connect to "SYS-CTRL-XXXX" device
+   - Verify session opens successfully in logcat
+   - Check Diagnostics page shows:
+     - Device name: SYS-CTRL-XXXX
+     - RSSI: -XX dBm
+     - Firmware version: X.Y.Z
+     - Protocol version: N
+
+### Real Device Testing Results
+Tested on Lenovo TB351FU tablet (Android 16) with ESP32-S3 MCU:
+- ✅ BLE scan and connect working
+- ✅ OPEN_SESSION ACK received reliably
+- ✅ KEEPALIVE heartbeat running at 1Hz
+- ✅ Telemetry streaming at 10Hz
+- ✅ RSSI polling at 0.5Hz
+- ✅ Diagnostics page fully populated
+
+### Next Steps (Stage 8)
+1. Add recipe persistence and SD card management
+2. Implement recipe transfer to MCU
+3. Add QR code recipe import

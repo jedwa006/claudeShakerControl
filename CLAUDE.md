@@ -78,3 +78,63 @@ Use `adb shell uiautomator dump` to get fresh coordinates if layout changes.
 ## Related Repositories
 - Firmware: `/tmp/NuNuCryoShaker` (ESP32-S3 BLE GATT server)
 - Handoff doc: `docs/FIRMWARE_AGENT_PROMPT.md`
+
+## Key Documentation
+- `docs/AGENT_LOG.md` - Development history and decisions
+- `docs/MCU_docs/95-implementation-checklist.md` - Acceptance criteria
+- `docs/MCU_docs/90-command-catalog.md` - Protocol reference
+- `docs/MCU_docs/30-wire-protocol.md` - Frame format
+- `docs/MCU_docs/80-gatt-uuids.md` - BLE UUIDs
+
+## Current Project Status
+
+### Completed Stages
+- **Stage 0**: Documentation and planning
+- **Stage 1**: UI skeleton with all screens
+- **Stage 2**: BLE foundation (scan, connect, wire protocol)
+- **Stage 3**: Run workflow with timer countdown
+- **Stage 4**: PID detail pages with setpoint/mode control
+- **Stage 5**: Capability bits and alarm acknowledgment
+- **Stage 6**: Auto-reconnection and device persistence
+- **Stage 7**: Session health and signal quality indicators
+
+### Current Status
+- Real device testing complete with ESP32-S3 MCU
+- OPEN_SESSION, KEEPALIVE, telemetry all working
+- 87 unit tests passing
+
+### Next Steps (Stage 8)
+1. Recipe persistence (save/load recipes)
+2. Recipe transfer to MCU (if applicable)
+3. QR code recipe import (future feature)
+
+### Implementation Checklist Progress
+From `docs/MCU_docs/95-implementation-checklist.md`:
+
+**Protocol & Contract (Section A)**: ✅ Complete
+- UUIDs pinned in code and docs
+- Frame parser with CRC validation
+- Round-trip tested with real MCU
+
+**ESP Firmware (Section B)**: ✅ Implemented by firmware agent
+- Advertising, GATT server, notifications
+- Command handling for OPEN_SESSION, KEEPALIVE
+- Session/lease policy
+
+**Android App (Section C)**: ✅ Complete
+- [x] C1: Permissions handling
+- [x] C2: Scan and filter by name prefix
+- [x] C3: Connect and discover services
+- [x] C4: Subscribe to telemetry and events
+- [x] C5: OPEN_SESSION + KEEPALIVE loop
+- [x] C6: Command queue with ACK correlation
+- [x] C7: Reconnect state machine
+
+**Performance (Section D)**: ✅ Verified
+- 10Hz telemetry stable
+- Command responses < 200ms
+
+**Safety (Section E)**: Partial
+- [ ] E1: Start gating (needs MCU policy enforcement)
+- [ ] E2: Mid-run disconnect (needs run implementation)
+- [ ] E3: E-stop (needs hardware)
