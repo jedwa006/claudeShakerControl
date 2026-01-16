@@ -61,6 +61,9 @@ object SemanticColors {
     val StaleContainer = Color(0xFF424242)
     val Disconnected = Color(0xFF757575)
 
+    // Input active (for DI indicators)
+    val InputActive = Color(0xFF00BCD4)  // Cyan
+
     // Output active (for LED indicators)
     val OutputActive = Color(0xFF64DD17)  // Lime green
     val OutputInactive = Color(0xFF424242)
@@ -92,3 +95,9 @@ object ConnectionStateColors {
     val Connected = SemanticColors.Active
     val Verified = SemanticColors.Normal
 }
+
+// Legacy status colors for backwards compatibility with IoScreen
+val StatusActive = SemanticColors.Active
+val StatusAlarm = SemanticColors.Alarm
+val StatusNormal = SemanticColors.Normal
+val StatusWarning = SemanticColors.Warning

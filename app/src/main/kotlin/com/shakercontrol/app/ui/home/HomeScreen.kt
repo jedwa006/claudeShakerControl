@@ -21,6 +21,7 @@ import com.shakercontrol.app.ui.theme.ShakerControlTheme
 @Composable
 fun HomeScreen(
     onNavigateToRun: () -> Unit,
+    onNavigateToDevices: () -> Unit,
     onNavigateToPid: (Int) -> Unit,
     onNavigateToDiagnostics: () -> Unit,
     onNavigateToSettings: () -> Unit,
@@ -39,6 +40,7 @@ fun HomeScreen(
         runProgress = runProgress,
         interlockStatus = interlockStatus,
         onNavigateToRun = onNavigateToRun,
+        onNavigateToDevices = onNavigateToDevices,
         onNavigateToPid = onNavigateToPid,
         onNavigateToDiagnostics = onNavigateToDiagnostics,
         onNavigateToSettings = onNavigateToSettings
@@ -53,6 +55,7 @@ private fun HomeScreenContent(
     runProgress: RunProgress?,
     interlockStatus: InterlockStatus,
     onNavigateToRun: () -> Unit,
+    onNavigateToDevices: () -> Unit,
     onNavigateToPid: (Int) -> Unit,
     onNavigateToDiagnostics: () -> Unit,
     onNavigateToSettings: () -> Unit
@@ -75,6 +78,7 @@ private fun HomeScreenContent(
                 recipe = recipe,
                 runProgress = runProgress,
                 onNavigateToRun = onNavigateToRun,
+                onNavigateToDevices = onNavigateToDevices,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -140,6 +144,7 @@ private fun HomeScreenPreview() {
                     isMotorEnabled = false
                 ),
                 onNavigateToRun = {},
+                onNavigateToDevices = {},
                 onNavigateToPid = {},
                 onNavigateToDiagnostics = {},
                 onNavigateToSettings = {}

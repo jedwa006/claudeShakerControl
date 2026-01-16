@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.collectLatest
 @Composable
 fun RunScreen(
     onNavigateToPid: (Int) -> Unit,
+    onNavigateToIo: () -> Unit,
     onNavigateBack: () -> Unit,
     viewModel: RunViewModel = hiltViewModel()
 ) {
@@ -31,6 +32,8 @@ fun RunScreen(
     val runProgress by viewModel.runProgress.collectAsStateWithLifecycle()
     val pidData by viewModel.pidData.collectAsStateWithLifecycle()
     val interlockStatus by viewModel.interlockStatus.collectAsStateWithLifecycle()
+    val ioStatus by viewModel.ioStatus.collectAsStateWithLifecycle()
+    val isSimulationEnabled by viewModel.isSimulationEnabled.collectAsStateWithLifecycle()
     val isExecutingCommand by viewModel.isExecutingCommand.collectAsStateWithLifecycle()
     val startGating by viewModel.startGating.collectAsStateWithLifecycle()
 
@@ -81,6 +84,8 @@ fun RunScreen(
             runProgress = runProgress,
             pidData = pidData,
             interlockStatus = interlockStatus,
+            ioStatus = ioStatus,
+            isSimulationEnabled = isSimulationEnabled,
             isExecutingCommand = isExecutingCommand,
             startGating = startGating,
             onRecipeChange = viewModel::updateRecipe,
@@ -89,6 +94,7 @@ fun RunScreen(
             onResume = viewModel::resumeRun,
             onStop = { showStopDialog = true },
             onNavigateToPid = onNavigateToPid,
+            onNavigateToIo = onNavigateToIo,
             modifier = Modifier.padding(paddingValues)
         )
     }
@@ -101,6 +107,8 @@ private fun RunScreenContent(
     runProgress: RunProgress?,
     pidData: List<PidData>,
     interlockStatus: InterlockStatus,
+    ioStatus: IoStatus,
+    isSimulationEnabled: Boolean,
     isExecutingCommand: Boolean,
     startGating: StartGatingResult,
     onRecipeChange: (Recipe) -> Unit,
@@ -109,6 +117,7 @@ private fun RunScreenContent(
     onResume: () -> Unit,
     onStop: () -> Unit,
     onNavigateToPid: (Int) -> Unit,
+    onNavigateToIo: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -157,6 +166,12 @@ private fun RunScreenContent(
             TemperaturesSection(
                 pidData = pidData,
                 onNavigateToPid = onNavigateToPid
+            )
+
+            IoSection(
+                ioStatus = ioStatus,
+                isSimulationEnabled = isSimulationEnabled,
+                onClick = onNavigateToIo
             )
 
             IndicatorsSection(
@@ -238,6 +253,11 @@ private fun RunScreenPreview() {
                     isHeatersEnabled = true,
                     isMotorEnabled = true
                 ),
+                ioStatus = IoStatus(
+                    digitalInputs = 0b00101101,  // Channels 1, 3, 4, 6 high
+                    relayOutputs = 0b00010010    // Channels 2, 5 high
+                ),
+                isSimulationEnabled = false,
                 isExecutingCommand = false,
                 startGating = StartGatingResult.OK,
                 onRecipeChange = {},
@@ -245,7 +265,8 @@ private fun RunScreenPreview() {
                 onPause = {},
                 onResume = {},
                 onStop = {},
-                onNavigateToPid = {}
+                onNavigateToPid = {},
+                onNavigateToIo = {}
             )
         }
     }

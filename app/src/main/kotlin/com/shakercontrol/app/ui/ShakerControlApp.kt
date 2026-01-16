@@ -30,8 +30,8 @@ fun ShakerControlApp(
     val currentRoute = NavRoutes.fromRoute(currentBackStackEntry?.destination?.route)
     val screenTitle = currentRoute?.title ?: "Home"
 
-    // Check if we can navigate back (more than just the start destination on the stack)
-    val canNavigateBack = navController.previousBackStackEntry != null
+    // Show back button only for sub-pages (not top-level drawer destinations)
+    val canNavigateBack = currentRoute?.isTopLevel == false && navController.previousBackStackEntry != null
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -138,6 +138,13 @@ private fun NavigationDrawerContent(
         label = { Text("Alarms") },
         selected = currentRoute == NavRoutes.Alarms,
         onClick = { onNavigate(NavRoutes.Alarms.route) },
+        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+    )
+
+    NavigationDrawerItem(
+        label = { Text("I/O Control") },
+        selected = currentRoute == NavRoutes.Io,
+        onClick = { onNavigate(NavRoutes.Io.route) },
         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
     )
 

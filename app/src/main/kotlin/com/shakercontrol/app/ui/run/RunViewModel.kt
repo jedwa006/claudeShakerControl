@@ -71,6 +71,20 @@ class RunViewModel @Inject constructor(
             )
         )
 
+    val ioStatus: StateFlow<IoStatus> = machineRepository.ioStatus
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = IoStatus(digitalInputs = 0, relayOutputs = 0)
+        )
+
+    val isSimulationEnabled: StateFlow<Boolean> = machineRepository.isSimulationEnabled
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
     // Command execution state
     private val _isExecutingCommand = MutableStateFlow(false)
     val isExecutingCommand: StateFlow<Boolean> = _isExecutingCommand.asStateFlow()

@@ -668,6 +668,159 @@ private fun parseDuration(text: String): Duration? {
     }
 }
 
+/**
+ * I/O section with "blinken-lights" style LED indicators.
+ * Shows DI and RO channels in compact LED format.
+ * Clickable to navigate to I/O detail page.
+ */
+@Composable
+fun IoSection(
+    ioStatus: IoStatus,
+    isSimulationEnabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.clickable(onClick = onClick)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "I/O",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isSimulationEnabled) {
+                        Surface(
+                            color = SemanticColors.Warning.copy(alpha = 0.2f),
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Text(
+                                text = "SIM",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = SemanticColors.Warning,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = "Open I/O details",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Digital Inputs row
+            Text(
+                text = "Digital Inputs",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                (1..8).forEach { channel ->
+                    IoLedIndicator(
+                        channel = channel,
+                        isOn = ioStatus.isInputHigh(channel),
+                        type = IoType.INPUT
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Relay Outputs row
+            Text(
+                text = "Relay Outputs",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                (1..8).forEach { channel ->
+                    IoLedIndicator(
+                        channel = channel,
+                        isOn = ioStatus.isOutputHigh(channel),
+                        type = IoType.OUTPUT
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Type of I/O channel for styling.
+ */
+private enum class IoType {
+    INPUT, OUTPUT
+}
+
+/**
+ * Single I/O LED with channel number.
+ */
+@Composable
+private fun IoLedIndicator(
+    channel: Int,
+    isOn: Boolean,
+    type: IoType
+) {
+    val onColor = when (type) {
+        IoType.INPUT -> SemanticColors.InputActive
+        IoType.OUTPUT -> SemanticColors.OutputActive
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        LedIndicator(
+            isOn = isOn,
+            size = 14.dp,
+            onColor = onColor,
+            isPulsing = isOn && type == IoType.OUTPUT
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = channel.toString(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun IoSectionPreview() {
+    ShakerControlTheme {
+        IoSection(
+            ioStatus = IoStatus(
+                digitalInputs = 0b00101101,  // Channels 1, 3, 4, 6 high
+                relayOutputs = 0b00010010    // Channels 2, 5 high
+            ),
+            isSimulationEnabled = false,
+            onClick = {}
+        )
+    }
+}
+
 @Preview
 @Composable
 private fun RecipeSectionPreview() {

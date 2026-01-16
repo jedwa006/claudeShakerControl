@@ -14,8 +14,8 @@ android {
         applicationId = "com.shakercontrol.app"
         minSdk = 31  // Android 12+ for modern BLE permissions
         targetSdk = 35  // Android 16 (API 35)
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

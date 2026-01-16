@@ -50,27 +50,18 @@ fun StatusStrip(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left: Back/Menu + Title
+            // Left: Menu + Title (with optional back button integrated into menu area)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(0.25f)
             ) {
-                // Animated back button with subtle pulse when first shown
-                AnimatedVisibility(
-                    visible = canNavigateBack,
-                    enter = fadeIn() + slideInHorizontally(),
-                    exit = fadeOut() + slideOutHorizontally()
-                ) {
-                    BackButton(onClick = onBackClick)
-                }
+                // Combined menu/back button area - fixed width to prevent layout shift
+                MenuBackButtonArea(
+                    canNavigateBack = canNavigateBack,
+                    onBackClick = onBackClick,
+                    onMenuClick = onMenuClick
+                )
 
-                // Menu button (always shown, shifts right when back is visible)
-                IconButton(onClick = onMenuClick) {
-                    Icon(
-                        imageVector = Icons.Default.Menu,
-                        contentDescription = "Menu"
-                    )
-                }
                 Text(
                     text = screenTitle,
                     style = MaterialTheme.typography.titleLarge,
@@ -172,6 +163,38 @@ private fun ConnectionChip(
 }
 
 /**
+ * Combined menu/back button area with fixed width to prevent layout shift.
+ * Shows either the menu icon (on top-level pages) or back arrow (on sub-pages).
+ * Both icons use the same 48dp space to prevent title text from shifting.
+ */
+@Composable
+private fun MenuBackButtonArea(
+    canNavigateBack: Boolean,
+    onBackClick: () -> Unit,
+    onMenuClick: () -> Unit
+) {
+    // Fixed width container - always 48dp, preventing layout shift
+    Box(modifier = Modifier.size(48.dp)) {
+        Crossfade(
+            targetState = canNavigateBack,
+            animationSpec = tween(200),
+            label = "menuBackCrossfade"
+        ) { showBack ->
+            if (showBack) {
+                BackButton(onClick = onBackClick)
+            } else {
+                IconButton(onClick = onMenuClick) {
+                    Icon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = "Menu"
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
  * Back button with subtle pulse animation on first appearance.
  * The pulse draws attention without being intrusive.
  */
@@ -202,7 +225,8 @@ private fun BackButton(
 
     Box(
         modifier = Modifier
-            .size(40.dp)
+            .size(48.dp)
+            .padding(4.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(
                 MaterialTheme.colorScheme.primary.copy(alpha = displayAlpha * 0.15f)

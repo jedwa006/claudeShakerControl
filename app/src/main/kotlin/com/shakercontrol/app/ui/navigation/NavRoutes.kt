@@ -3,14 +3,19 @@ package com.shakercontrol.app.ui.navigation
 /**
  * Navigation routes for the app.
  * Screen titles from docs/ui-copy-labels-v1.md section 1.1.
+ *
+ * @param isTopLevel True for pages accessible from the navigation drawer.
+ *                   Top-level pages don't show a back button.
  */
-sealed class NavRoutes(val route: String, val title: String) {
-    data object Home : NavRoutes("home", "Home")
-    data object Run : NavRoutes("run", "Run")
-    data object Devices : NavRoutes("devices", "Devices")
-    data object Alarms : NavRoutes("alarms", "Alarms")
-    data object Diagnostics : NavRoutes("diagnostics", "Diagnostics")
-    data object Settings : NavRoutes("settings", "Settings")
+sealed class NavRoutes(val route: String, val title: String, val isTopLevel: Boolean = false) {
+    data object Home : NavRoutes("home", "Home", isTopLevel = true)
+    data object Run : NavRoutes("run", "Run", isTopLevel = true)
+    data object Devices : NavRoutes("devices", "Devices", isTopLevel = true)
+    data object Alarms : NavRoutes("alarms", "Alarms", isTopLevel = true)
+    data object Diagnostics : NavRoutes("diagnostics", "Diagnostics", isTopLevel = true)
+    data object Settings : NavRoutes("settings", "Settings", isTopLevel = true)
+    data object Io : NavRoutes("io", "I/O Control", isTopLevel = true)
+    // Sub-pages (detail screens) - these show a back button
     data object Pid1 : NavRoutes("pid/1", "PID 1")
     data object Pid2 : NavRoutes("pid/2", "PID 2")
     data object Pid3 : NavRoutes("pid/3", "PID 3")
@@ -24,6 +29,7 @@ sealed class NavRoutes(val route: String, val title: String) {
             route == Alarms.route -> Alarms
             route == Diagnostics.route -> Diagnostics
             route == Settings.route -> Settings
+            route == Io.route -> Io
             route == Pid1.route -> Pid1
             route == Pid2.route -> Pid2
             route == Pid3.route -> Pid3

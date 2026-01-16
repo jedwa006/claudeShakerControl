@@ -72,8 +72,15 @@ Use `adb shell uiautomator dump` to get fresh coordinates if layout changes.
 - Forget button: tap 1195 168
 
 ### Navigation Drawer
-- Open: swipe from x=0 to x=300 at y=400
-- Devices item: tap 100 270
+- Open: tap hamburger menu at 60 107, or swipe from x=0 to x=300 at y=400
+- Home: tap 270 219
+- Run: tap 270 303
+- Devices: tap 270 387
+- Alarms: tap 270 471
+- I/O Control: tap 270 555
+- Diagnostics: tap 270 639
+- Settings: tap 270 723
+- Service mode: tap 270 833
 
 ## Related Repositories
 - Firmware: `/tmp/NuNuCryoShaker` (ESP32-S3 BLE GATT server)
@@ -101,12 +108,27 @@ Use `adb shell uiautomator dump` to get fresh coordinates if layout changes.
 ### Current Status
 - Real device testing complete with ESP32-S3 MCU
 - OPEN_SESSION, KEEPALIVE, telemetry all working
-- 87 unit tests passing
+- 101 unit tests passing
+- I/O Control screen implemented with DI/RO visualization
 
-### Next Steps (Stage 8)
+### Stage 8 Progress (In Progress)
+**Completed:**
+- I/O Control screen with 8 digital inputs and 8 relay outputs
+- Simulation mode for testing DI in service mode
+- Relay control commands (requires service mode)
+- 14 new unit tests for IoViewModel
+- Navigation architecture: top-level pages (drawer) don't show back button
+- Connect button on Home now navigates to Devices when disconnected
+- Back button visual shift fixed (48dp fixed box with crossfade)
+
+**Remaining:**
 1. Recipe persistence (save/load recipes)
 2. Recipe transfer to MCU (if applicable)
 3. QR code recipe import (future feature)
+
+### Known Issues
+- Connect popup on first start doesn't initiate connect sequence (must use Devices screen)
+- Relay commands show "NO ARGS" error (firmware needs SET_RELAY handler - see FIRMWARE_AGENT_PROMPT.md)
 
 ### Implementation Checklist Progress
 From `docs/MCU_docs/95-implementation-checklist.md`:

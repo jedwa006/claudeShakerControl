@@ -782,7 +782,132 @@ Tested on Lenovo TB351FU tablet (Android 16) with ESP32-S3 MCU:
 - ✅ RSSI polling at 0.5Hz
 - ✅ Diagnostics page fully populated
 
-### Next Steps (Stage 8)
-1. Add recipe persistence and SD card management
-2. Implement recipe transfer to MCU
-3. Add QR code recipe import
+---
+
+## Stage 8 — I/O Control + Recipe Features
+
+**Date:** 2026-01-16
+**Branch:** `dev` (in progress)
+**Status:** Partial
+
+### Scope Statement
+Add I/O Control screen for direct relay output control and digital input visualization. Prepare for recipe persistence features.
+
+### Features Implemented
+
+#### I/O Control Screen
+- **Digital Inputs card**: Shows DI1-DI8 with LED-style indicators
+  - Green circle with "H" for HIGH state
+  - Gray circle with "L" for LOW state
+  - Simulation toggle (service mode only) to test input logic
+- **Relay Outputs card**: Shows RO1-RO8 with status and control buttons
+  - Status indicator showing current ON/OFF state
+  - Toggle buttons to control each relay
+  - Requires Service Mode to enable controls
+- **Service Mode hint**: Banner at bottom explaining how to enable controls
+
+#### Repository Interface Extensions
+- `setRelay(channel, on)`: Send relay control command to MCU
+- `isSimulationEnabled`: StateFlow for simulation mode state
+- `setSimulationEnabled(enabled)`: Toggle input simulation
+- `setSimulatedInput(channel, high)`: Set simulated input values
+
+#### Navigation
+- Added "I/O Control" to navigation drawer between Alarms and Diagnostics
+- Route: `NavRoutes.Io` at path "io"
+
+### Architecture
+
+```
+ui/io/
+├── IoViewModel.kt         # ViewModel with relay control and simulation logic
+└── IoScreen.kt            # UI with DI/RO visualization
+
+data/repository/
+├── MachineRepository.kt   # Added setRelay, simulation methods
+├── BleMachineRepository.kt # BLE implementation with real/simulated input tracking
+└── MockMachineRepository.kt # Mock implementation for testing
+```
+
+### Files Created
+- `ui/io/IoViewModel.kt` — 107 lines
+- `ui/io/IoScreen.kt` — 324 lines
+- `test/ui/io/IoViewModelTest.kt` — 249 lines (14 tests)
+
+### Files Modified
+- `data/repository/MachineRepository.kt` — Added I/O interface methods
+- `data/repository/BleMachineRepository.kt` — BLE relay command, simulation tracking
+- `data/repository/MockMachineRepository.kt` — Mock implementation
+- `ui/navigation/NavRoutes.kt` — Added Io route
+- `ui/navigation/AppNavHost.kt` — Added IoScreen composable
+- `ui/ShakerControlApp.kt` — Added I/O Control to drawer
+
+### Tests Added
+- 14 new unit tests in `IoViewModelTest.kt`
+- Total tests: 101 (was 87)
+
+### Protocol Details
+- `SET_RELAY` command (0x0022): Channel (1-8) + state (ON=1/OFF=0)
+- Optimistic UI update on successful ACK
+- Service mode required for relay control (enforced in UI)
+
+### How to Test
+1. `./gradlew testDebugUnitTest` — Run all 101 tests
+2. Install on device and navigate to I/O Control via drawer
+3. (Without service mode) Observe inputs, relay buttons disabled
+4. Enable Service Mode from drawer
+5. Toggle relays — should send commands to MCU
+6. Enable Simulate toggle — tap DI LEDs to toggle simulated state
+
+### Known Issues
+- Connect popup on first start doesn't initiate connection sequence
+- Relay commands show "NO ARGS" error - firmware needs SET_RELAY handler
+
+### Next Steps
+1. Recipe persistence (save/load recipes to local storage)
+2. Recipe transfer to MCU (if applicable)
+3. QR code recipe import (future feature)
+
+---
+
+## Stage 8 Progress Update (2025-01-16)
+
+### Navigation Architecture Improvements
+
+#### Back Button Simplification
+Implemented a cleaner navigation architecture for back button handling:
+
+1. **Top-level pages (drawer accessible)**: Never show back button
+   - Home, Run, Devices, Alarms, I/O Control, Diagnostics, Settings
+   - Marked with `isTopLevel = true` in NavRoutes
+
+2. **Sub-pages (detail screens)**: Show back button
+   - PID 1, PID 2, PID 3 detail screens
+   - Marked with `isTopLevel = false` (default)
+
+3. **Fixed layout shift**: Back button area is now a fixed 48dp Box with Crossfade animation
+   - Menu icon or back arrow occupies the same space
+   - No secondary menu button, eliminating visual shift
+
+#### Connect Button Fix
+- RunCard "Connect" button now navigates to Devices screen when disconnected
+- Previously always navigated to Run screen regardless of connection state
+
+### Files Modified
+- `ui/navigation/NavRoutes.kt` — Added `isTopLevel` property to distinguish drawer vs detail pages
+- `ui/ShakerControlApp.kt` — Updated back button logic: `currentRoute?.isTopLevel == false`
+- `ui/components/StatusStrip.kt` — Simplified MenuBackButtonArea to fixed 48dp Box
+- `ui/home/HomeScreen.kt` — Added `onNavigateToDevices` callback
+- `ui/home/HomeCards.kt` — RunCard navigates to Devices when disconnected
+- `ui/navigation/AppNavHost.kt` — Pass `onNavigateToDevices` to HomeScreen
+
+### Firmware Handoff
+Updated `docs/FIRMWARE_AGENT_PROMPT.md` with SET_RELAY (0x0001) implementation requirements:
+- Command frame structure with relay_index and state
+- Expected ACK format
+- Testing procedure from Android app
+
+### Testing Results
+- All 101 unit tests passing
+- Navigation tested on device - no visual shift on back button transitions
+- Connect button correctly navigates to Devices when disconnected

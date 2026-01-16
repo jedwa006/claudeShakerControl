@@ -9,6 +9,7 @@ import com.shakercontrol.app.ui.alarms.AlarmsScreen
 import com.shakercontrol.app.ui.devices.DevicesScreen
 import com.shakercontrol.app.ui.diagnostics.DiagnosticsScreen
 import com.shakercontrol.app.ui.home.HomeScreen
+import com.shakercontrol.app.ui.io.IoScreen
 import com.shakercontrol.app.ui.pid.PidDetailScreen
 import com.shakercontrol.app.ui.run.RunScreen
 import com.shakercontrol.app.ui.settings.SettingsScreen
@@ -26,6 +27,7 @@ fun AppNavHost(
         composable(NavRoutes.Home.route) {
             HomeScreen(
                 onNavigateToRun = { navController.navigate(NavRoutes.Run.route) },
+                onNavigateToDevices = { navController.navigate(NavRoutes.Devices.route) },
                 onNavigateToPid = { pidId ->
                     navController.navigate("pid/$pidId")
                 },
@@ -39,6 +41,7 @@ fun AppNavHost(
                 onNavigateToPid = { pidId ->
                     navController.navigate("pid/$pidId")
                 },
+                onNavigateToIo = { navController.navigate(NavRoutes.Io.route) },
                 onNavigateBack = { navController.popBackStack() }
             )
         }
@@ -63,6 +66,12 @@ fun AppNavHost(
 
         composable(NavRoutes.Settings.route) {
             SettingsScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(NavRoutes.Io.route) {
+            IoScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
         }

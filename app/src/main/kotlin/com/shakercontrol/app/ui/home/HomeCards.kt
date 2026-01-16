@@ -32,13 +32,15 @@ fun RunCard(
     recipe: Recipe,
     runProgress: RunProgress?,
     onNavigateToRun: () -> Unit,
+    onNavigateToDevices: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isOperating = machineState.isOperating
     val title = if (isOperating) "Live session" else "Run"
+    val isDisconnected = connectionState == ConnectionState.DISCONNECTED
 
     val subtitle = when {
-        connectionState == ConnectionState.DISCONNECTED -> "Not connected - connect to start"
+        isDisconnected -> "Not connected - connect to start"
         connectionState != ConnectionState.LIVE && connectionState != ConnectionState.DEGRADED ->
             "Connected - verify to start"
         machineState == MachineState.RUNNING && runProgress != null ->
@@ -49,7 +51,7 @@ fun RunCard(
     }
 
     val buttonText = when {
-        connectionState == ConnectionState.DISCONNECTED -> "Connect"
+        isDisconnected -> "Connect"
         connectionState != ConnectionState.LIVE && connectionState != ConnectionState.DEGRADED -> "Verify connection"
         isOperating -> "Resume live session"
         else -> "Open run"
@@ -60,6 +62,9 @@ fun RunCard(
         machineState == MachineState.READY -> SemanticColors.Normal
         else -> MaterialTheme.colorScheme.primary
     }
+
+    // Navigate to Devices when disconnected, Run otherwise
+    val onButtonClick = if (isDisconnected) onNavigateToDevices else onNavigateToRun
 
     Card(
         modifier = modifier,
@@ -104,7 +109,7 @@ fun RunCard(
             }
 
             Button(
-                onClick = onNavigateToRun,
+                onClick = onButtonClick,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),

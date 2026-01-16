@@ -44,6 +44,12 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
     private val _interlockStatus = MutableStateFlow(createMockInterlockStatus())
     override val interlockStatus: StateFlow<InterlockStatus> = _interlockStatus.asStateFlow()
 
+    private val _isSimulationEnabled = MutableStateFlow(false)
+    override val isSimulationEnabled: StateFlow<Boolean> = _isSimulationEnabled.asStateFlow()
+
+    // Simulated input values (used when simulation mode is enabled)
+    private var simulatedInputs = 0
+
     private fun createMockSystemStatus() = SystemStatus(
         connectionState = ConnectionState.LIVE,
         machineState = MachineState.READY,
@@ -410,5 +416,48 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
         }
         _alarms.value = currentAlarms
         return Result.success(Unit)
+    }
+
+    override suspend fun setRelay(channel: Int, on: Boolean): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        require(channel in 1..8) { "Channel must be 1-8" }
+
+        // Simulate command delay
+        delay(100)
+
+        // Update relay state
+        val current = _ioStatus.value
+        val newBits = if (on) {
+            current.relayOutputs or (1 shl (channel - 1))
+        } else {
+            current.relayOutputs and (1 shl (channel - 1)).inv()
+        }
+        _ioStatus.value = current.copy(relayOutputs = newBits)
+        return Result.success(Unit)
+    }
+
+    override suspend fun setSimulationEnabled(enabled: Boolean) {
+        _isSimulationEnabled.value = enabled
+        if (!enabled) {
+            simulatedInputs = 0
+        }
+    }
+
+    override suspend fun setSimulatedInput(channel: Int, high: Boolean) {
+        require(channel in 1..8) { "Channel must be 1-8" }
+
+        if (high) {
+            simulatedInputs = simulatedInputs or (1 shl (channel - 1))
+        } else {
+            simulatedInputs = simulatedInputs and (1 shl (channel - 1)).inv()
+        }
+
+        // When simulation is enabled, use simulated values
+        if (_isSimulationEnabled.value) {
+            val current = _ioStatus.value
+            _ioStatus.value = current.copy(digitalInputs = simulatedInputs)
+        }
     }
 }

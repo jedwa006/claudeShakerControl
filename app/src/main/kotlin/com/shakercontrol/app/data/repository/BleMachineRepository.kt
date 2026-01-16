@@ -110,6 +110,12 @@ class BleMachineRepository @Inject constructor(
     override val ioStatus: StateFlow<IoStatus> = _ioStatus.asStateFlow()
     override val interlockStatus: StateFlow<InterlockStatus> = _interlockStatus.asStateFlow()
 
+    // Simulation mode (for testing DI in service mode)
+    private val _isSimulationEnabled = MutableStateFlow(false)
+    override val isSimulationEnabled: StateFlow<Boolean> = _isSimulationEnabled.asStateFlow()
+    private var simulatedInputs = 0
+    private var realInputs = 0
+
     init {
         // Monitor BLE connection state
         scope.launch {
@@ -393,8 +399,12 @@ class BleMachineRepository @Inject constructor(
         updateAlarmsFromBits(snapshot.alarmBits)
 
         // Update IO status
+        // Store real inputs for when simulation is disabled
+        realInputs = snapshot.diBits
+        // Use simulated inputs if simulation is enabled
+        val effectiveDiBits = if (_isSimulationEnabled.value) simulatedInputs else snapshot.diBits
         _ioStatus.value = IoStatus(
-            digitalInputs = snapshot.diBits,
+            digitalInputs = effectiveDiBits,
             relayOutputs = snapshot.roBits
         )
 
@@ -814,5 +824,62 @@ class BleMachineRepository @Inject constructor(
         } else {
             Result.failure(RuntimeException("Clear alarms rejected: ${ack?.status}"))
         }
+    }
+
+    override suspend fun setRelay(channel: Int, on: Boolean): Result<Unit> {
+        require(channel in 1..8) { "Channel must be 1-8" }
+
+        val relayState = if (on) RelayState.ON else RelayState.OFF
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.SET_RELAY,
+            payload = CommandPayloadBuilder.setRelay(channel, relayState)
+        )
+
+        return if (ack?.status == AckStatus.OK) {
+            // Update local state optimistically
+            val current = _ioStatus.value
+            val newBits = if (on) {
+                current.relayOutputs or (1 shl (channel - 1))
+            } else {
+                current.relayOutputs and (1 shl (channel - 1)).inv()
+            }
+            _ioStatus.value = current.copy(relayOutputs = newBits)
+            Log.d(TAG, "Relay CH$channel set to ${if (on) "ON" else "OFF"}")
+            Result.success(Unit)
+        } else {
+            val detail = when (ack?.detail) {
+                AckDetail.SESSION_INVALID -> "Session invalid"
+                AckDetail.INTERLOCK_OPEN -> "Interlock open"
+                else -> "Rejected: ${ack?.status}"
+            }
+            Log.w(TAG, "setRelay failed: $detail")
+            Result.failure(RuntimeException(detail))
+        }
+    }
+
+    override suspend fun setSimulationEnabled(enabled: Boolean) {
+        _isSimulationEnabled.value = enabled
+        if (!enabled) {
+            // Restore real inputs when simulation is disabled
+            simulatedInputs = 0
+            _ioStatus.value = _ioStatus.value.copy(digitalInputs = realInputs)
+        }
+        Log.d(TAG, "Simulation mode ${if (enabled) "enabled" else "disabled"}")
+    }
+
+    override suspend fun setSimulatedInput(channel: Int, high: Boolean) {
+        require(channel in 1..8) { "Channel must be 1-8" }
+
+        if (high) {
+            simulatedInputs = simulatedInputs or (1 shl (channel - 1))
+        } else {
+            simulatedInputs = simulatedInputs and (1 shl (channel - 1)).inv()
+        }
+
+        // When simulation is enabled, use simulated values
+        if (_isSimulationEnabled.value) {
+            _ioStatus.value = _ioStatus.value.copy(digitalInputs = simulatedInputs)
+        }
+        Log.d(TAG, "Simulated DI$channel set to ${if (high) "HIGH" else "LOW"}")
     }
 }

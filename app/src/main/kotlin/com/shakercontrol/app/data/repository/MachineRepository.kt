@@ -71,4 +71,12 @@ interface MachineRepository {
     // Alarm commands
     suspend fun acknowledgeAlarm(alarmId: String): Result<Unit>
     suspend fun clearLatchedAlarms(): Result<Unit>
+
+    // I/O commands
+    suspend fun setRelay(channel: Int, on: Boolean): Result<Unit>
+
+    // Simulation mode for testing (service mode only)
+    val isSimulationEnabled: StateFlow<Boolean>
+    suspend fun setSimulationEnabled(enabled: Boolean)
+    suspend fun setSimulatedInput(channel: Int, high: Boolean)
 }
