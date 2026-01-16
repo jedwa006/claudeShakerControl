@@ -1,7 +1,7 @@
 package com.shakercontrol.app.data.repository
 
 import com.shakercontrol.app.domain.model.*
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,6 +15,13 @@ import kotlin.time.Duration.Companion.seconds
  */
 @Singleton
 class MockMachineRepository @Inject constructor() : MachineRepository {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // Run progress timer
+    private var runTimerJob: Job? = null
+    private var runStartTime: Long = 0L
+    private var pausedElapsedMs: Long = 0L
 
     private val _systemStatus = MutableStateFlow(createMockSystemStatus())
     override val systemStatus: StateFlow<SystemStatus> = _systemStatus.asStateFlow()
@@ -103,6 +110,106 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
         isMotorEnabled = false
     )
 
+    // Timer functions
+    private fun startRunTimer() {
+        runTimerJob?.cancel()
+        runStartTime = System.currentTimeMillis()
+        runTimerJob = scope.launch {
+            while (isActive) {
+                delay(1000) // Update every second
+                updateRunProgress()
+            }
+        }
+    }
+
+    private fun pauseRunTimer() {
+        runTimerJob?.cancel()
+        runTimerJob = null
+        // Save the elapsed time when paused
+        pausedElapsedMs += System.currentTimeMillis() - runStartTime
+    }
+
+    private fun resumeRunTimer() {
+        runTimerJob?.cancel()
+        runStartTime = System.currentTimeMillis()
+        runTimerJob = scope.launch {
+            while (isActive) {
+                delay(1000)
+                updateRunProgress()
+            }
+        }
+    }
+
+    private fun stopRunTimer() {
+        runTimerJob?.cancel()
+        runTimerJob = null
+        pausedElapsedMs = 0L
+        runStartTime = 0L
+    }
+
+    private fun updateRunProgress() {
+        val currentRecipe = _recipe.value
+        val currentProgress = _runProgress.value ?: return
+
+        // Calculate total elapsed time including any paused time
+        val totalElapsedMs = pausedElapsedMs + (System.currentTimeMillis() - runStartTime)
+
+        // Calculate which cycle and phase we're in
+        val millingMs = currentRecipe.millingDuration.inWholeMilliseconds
+        val holdMs = currentRecipe.holdDuration.inWholeMilliseconds
+        val totalCycles = currentRecipe.cycleCount
+
+        // Determine current position
+        var remainingMs = totalElapsedMs
+        var currentCycle = 1
+        var currentPhase = RunPhase.MILLING
+        var phaseElapsedMs = 0L
+
+        for (cycle in 1..totalCycles) {
+            currentCycle = cycle
+
+            // Milling phase
+            if (remainingMs < millingMs) {
+                currentPhase = RunPhase.MILLING
+                phaseElapsedMs = remainingMs
+                break
+            }
+            remainingMs -= millingMs
+
+            // Hold phase (no hold after last cycle)
+            if (cycle < totalCycles) {
+                if (remainingMs < holdMs) {
+                    currentPhase = RunPhase.HOLDING
+                    phaseElapsedMs = remainingMs
+                    break
+                }
+                remainingMs -= holdMs
+            } else {
+                // Run complete
+                stopRunTimer()
+                _runProgress.value = null
+                _systemStatus.value = _systemStatus.value.copy(
+                    machineState = MachineState.IDLE
+                )
+                return
+            }
+        }
+
+        // Calculate remaining times
+        val phaseDuration = if (currentPhase == RunPhase.MILLING) millingMs else holdMs
+        val phaseRemainingMs = (phaseDuration - phaseElapsedMs).coerceAtLeast(0)
+        val totalRemainingMs = (currentRecipe.totalRuntime.inWholeMilliseconds - totalElapsedMs).coerceAtLeast(0)
+
+        _runProgress.value = RunProgress(
+            currentCycle = currentCycle,
+            totalCycles = totalCycles,
+            currentPhase = currentPhase,
+            phaseElapsed = (phaseElapsedMs / 1000).seconds,
+            phaseRemaining = (phaseRemainingMs / 1000).seconds,
+            totalRemaining = (totalRemainingMs / 1000).seconds
+        )
+    }
+
     override suspend fun startScan() {
         _systemStatus.value = _systemStatus.value.copy(
             connectionState = ConnectionState.SCANNING
@@ -142,6 +249,7 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
     }
 
     override suspend fun disconnect() {
+        stopRunTimer()
         _systemStatus.value = _systemStatus.value.copy(
             connectionState = ConnectionState.DISCONNECTED,
             deviceName = null,
@@ -162,6 +270,7 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
             return Result.failure(IllegalStateException("Cannot start: not connected"))
         }
 
+        pausedElapsedMs = 0L  // Reset pause accumulator
         _systemStatus.value = _systemStatus.value.copy(
             machineState = MachineState.RUNNING
         )
@@ -173,6 +282,7 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
             phaseRemaining = _recipe.value.millingDuration,
             totalRemaining = _recipe.value.totalRuntime
         )
+        startRunTimer()  // Start the countdown timer
         return Result.success(Unit)
     }
 
@@ -181,6 +291,7 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
             return Result.failure(IllegalStateException("Cannot pause: machine not running"))
         }
 
+        pauseRunTimer()  // Pause the countdown timer
         _systemStatus.value = _systemStatus.value.copy(
             machineState = MachineState.PAUSED
         )
@@ -192,6 +303,7 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
             return Result.failure(IllegalStateException("Cannot resume: machine not paused"))
         }
 
+        resumeRunTimer()  // Resume the countdown timer
         _systemStatus.value = _systemStatus.value.copy(
             machineState = MachineState.RUNNING
         )
@@ -203,6 +315,7 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
             return Result.failure(IllegalStateException("Cannot stop: machine not operating"))
         }
 
+        stopRunTimer()  // Stop the countdown timer
         _systemStatus.value = _systemStatus.value.copy(
             machineState = MachineState.IDLE
         )

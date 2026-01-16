@@ -15,13 +15,17 @@ import javax.inject.Singleton
 abstract class AppModule {
 
     /**
-     * Bind the BLE repository as the primary MachineRepository.
-     * For development/testing, you can switch to MockMachineRepository.
+     * Bind the repository as the primary MachineRepository.
+     *
+     * For emulator/testing: Use MockMachineRepository (has working timer countdown)
+     * For real device with MCU: Use BleMachineRepository
+     *
+     * TODO: Add build flavor or runtime toggle for this
      */
     @Binds
     @Singleton
     abstract fun bindMachineRepository(
-        bleRepository: BleMachineRepository
+        mockRepository: MockMachineRepository
     ): MachineRepository
 
     /**
