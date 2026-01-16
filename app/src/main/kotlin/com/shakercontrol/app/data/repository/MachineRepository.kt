@@ -67,4 +67,8 @@ interface MachineRepository {
     // PID control commands
     suspend fun setSetpoint(controllerId: Int, setpoint: Float): Result<Unit>
     suspend fun setMode(controllerId: Int, mode: PidMode): Result<Unit>
+
+    // Alarm commands
+    suspend fun acknowledgeAlarm(alarmId: String): Result<Unit>
+    suspend fun clearLatchedAlarms(): Result<Unit>
 }

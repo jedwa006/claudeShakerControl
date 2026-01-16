@@ -229,21 +229,22 @@ fun ControlsSection(
     machineState: MachineState,
     connectionState: ConnectionState,
     isExecutingCommand: Boolean = false,
+    startGating: StartGatingResult = StartGatingResult.OK,
     onStart: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val canStart = machineState.canStart && connectionState == ConnectionState.LIVE && !isExecutingCommand
+    // Use startGating for Start button, other buttons use simple state checks
+    val canStart = startGating.canStart && !isExecutingCommand
     val canPause = machineState.canPause && !isExecutingCommand
     val canResume = machineState.canResume && !isExecutingCommand
     val canStop = machineState.canStop && !isExecutingCommand
 
     val disabledReason = when {
         isExecutingCommand -> "Sending command..."
-        connectionState != ConnectionState.LIVE -> "Cannot start: not connected."
-        !machineState.canStart && !machineState.isOperating -> "Cannot start: machine not ready."
+        !startGating.canStart && !machineState.isOperating -> startGating.reason
         else -> null
     }
 
@@ -687,6 +688,7 @@ private fun ControlsSectionPreview() {
         ControlsSection(
             machineState = MachineState.READY,
             connectionState = ConnectionState.LIVE,
+            startGating = StartGatingResult.OK,
             onStart = {},
             onPause = {},
             onResume = {},

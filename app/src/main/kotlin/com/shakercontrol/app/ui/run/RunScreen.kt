@@ -32,6 +32,7 @@ fun RunScreen(
     val pidData by viewModel.pidData.collectAsStateWithLifecycle()
     val interlockStatus by viewModel.interlockStatus.collectAsStateWithLifecycle()
     val isExecutingCommand by viewModel.isExecutingCommand.collectAsStateWithLifecycle()
+    val startGating by viewModel.startGating.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
     var showStopDialog by remember { mutableStateOf(false) }
@@ -81,6 +82,7 @@ fun RunScreen(
             pidData = pidData,
             interlockStatus = interlockStatus,
             isExecutingCommand = isExecutingCommand,
+            startGating = startGating,
             onRecipeChange = viewModel::updateRecipe,
             onStart = viewModel::startRun,
             onPause = viewModel::pauseRun,
@@ -100,6 +102,7 @@ private fun RunScreenContent(
     pidData: List<PidData>,
     interlockStatus: InterlockStatus,
     isExecutingCommand: Boolean,
+    startGating: StartGatingResult,
     onRecipeChange: (Recipe) -> Unit,
     onStart: () -> Unit,
     onPause: () -> Unit,
@@ -132,6 +135,7 @@ private fun RunScreenContent(
                 machineState = systemStatus.machineState,
                 connectionState = systemStatus.connectionState,
                 isExecutingCommand = isExecutingCommand,
+                startGating = startGating,
                 onStart = onStart,
                 onPause = onPause,
                 onResume = onResume,
@@ -235,6 +239,7 @@ private fun RunScreenPreview() {
                     isMotorEnabled = true
                 ),
                 isExecutingCommand = false,
+                startGating = StartGatingResult.OK,
                 onRecipeChange = {},
                 onStart = {},
                 onPause = {},
