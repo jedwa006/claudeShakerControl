@@ -50,6 +50,10 @@ class BleManager @Inject constructor(
     private val _connectedDevice = MutableStateFlow<ConnectedDevice?>(null)
     val connectedDevice: StateFlow<ConnectedDevice?> = _connectedDevice.asStateFlow()
 
+    // Current RSSI for connected device
+    private val _rssi = MutableStateFlow<Int?>(null)
+    val rssi: StateFlow<Int?> = _rssi.asStateFlow()
+
     // Disconnect events for UI notification
     private val _disconnectEvents = MutableSharedFlow<DisconnectEvent>(replay = 0)
     val disconnectEvents: SharedFlow<DisconnectEvent> = _disconnectEvents.asSharedFlow()
@@ -223,6 +227,15 @@ class BleManager @Inject constructor(
      */
     fun getLastConnectedAddress(): String? = lastConnectedAddress
 
+    /**
+     * Request RSSI reading from connected device.
+     * The result will be emitted via the rssi StateFlow.
+     */
+    @SuppressLint("MissingPermission")
+    fun readRssi(): Boolean {
+        return bluetoothGatt?.readRemoteRssi() ?: false
+    }
+
     private val gattCallback = object : BluetoothGattCallback() {
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
@@ -236,6 +249,13 @@ class BleManager @Inject constructor(
                     Log.d(TAG, "Disconnected from GATT server")
                     cleanup()
                 }
+            }
+        }
+
+        override fun onReadRemoteRssi(gatt: BluetoothGatt, rssi: Int, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                _rssi.value = rssi
+                Log.d(TAG, "RSSI: $rssi dBm")
             }
         }
 
@@ -495,6 +515,7 @@ class BleManager @Inject constructor(
         commandCharacteristic = null
         _connectionState.value = BleConnectionState.DISCONNECTED
         _connectedDevice.value = null
+        _rssi.value = null
         pendingAcks.clear()
 
         // Emit disconnect event if we were previously connected

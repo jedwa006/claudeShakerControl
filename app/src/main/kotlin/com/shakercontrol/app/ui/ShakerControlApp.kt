@@ -10,6 +10,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.shakercontrol.app.ui.components.ServiceModeBanner
+import com.shakercontrol.app.ui.components.SessionLeaseWarningBanner
 import com.shakercontrol.app.ui.components.StatusStrip
 import com.shakercontrol.app.ui.navigation.AppNavHost
 import com.shakercontrol.app.ui.navigation.NavRoutes
@@ -70,6 +71,11 @@ fun ShakerControlApp(
             if (systemStatus.isServiceModeEnabled) {
                 ServiceModeBanner()
             }
+
+            // Session lease warning banner
+            SessionLeaseWarningBanner(
+                sessionLeaseStatus = systemStatus.sessionLeaseStatus
+            )
 
             // Main content
             AppNavHost(
