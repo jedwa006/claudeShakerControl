@@ -207,3 +207,55 @@ object CapabilityBits {
     const val SUPPORTS_PID_TUNING = 1 shl 4
     const val SUPPORTS_OTA = 1 shl 5
 }
+
+/**
+ * Device info parsed from the Device Info characteristic.
+ * Layout (12 bytes, little-endian):
+ * - proto_ver (u8)
+ * - fw_major (u8), fw_minor (u8), fw_patch (u8)
+ * - build_id (u32)
+ * - cap_bits (u32)
+ */
+data class DeviceInfo(
+    val protocolVersion: Int,
+    val firmwareMajor: Int,
+    val firmwareMinor: Int,
+    val firmwarePatch: Int,
+    val buildId: Long,
+    val capabilityBits: Long
+) {
+    val firmwareVersionString: String
+        get() = "$firmwareMajor.$firmwareMinor.$firmwarePatch"
+
+    companion object {
+        fun parse(data: ByteArray): DeviceInfo? {
+            if (data.size < 12) return null
+
+            val protoVer = data[0].toInt() and 0xFF
+            val fwMajor = data[1].toInt() and 0xFF
+            val fwMinor = data[2].toInt() and 0xFF
+            val fwPatch = data[3].toInt() and 0xFF
+
+            // Little-endian u32 for build_id (bytes 4-7)
+            val buildId = ((data[4].toLong() and 0xFF)) or
+                    ((data[5].toLong() and 0xFF) shl 8) or
+                    ((data[6].toLong() and 0xFF) shl 16) or
+                    ((data[7].toLong() and 0xFF) shl 24)
+
+            // Little-endian u32 for cap_bits (bytes 8-11)
+            val capBits = ((data[8].toLong() and 0xFF)) or
+                    ((data[9].toLong() and 0xFF) shl 8) or
+                    ((data[10].toLong() and 0xFF) shl 16) or
+                    ((data[11].toLong() and 0xFF) shl 24)
+
+            return DeviceInfo(
+                protocolVersion = protoVer,
+                firmwareMajor = fwMajor,
+                firmwareMinor = fwMinor,
+                firmwarePatch = fwPatch,
+                buildId = buildId,
+                capabilityBits = capBits
+            )
+        }
+    }
+}

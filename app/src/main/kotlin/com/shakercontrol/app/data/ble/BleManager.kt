@@ -74,6 +74,10 @@ class BleManager @Inject constructor(
     private val _ackChannel = Channel<CommandAckParser.CommandAck>(Channel.BUFFERED)
     val ackFlow: Flow<CommandAckParser.CommandAck> = _ackChannel.receiveAsFlow()
 
+    // Device info from GATT read
+    private val _deviceInfo = MutableStateFlow<DeviceInfo?>(null)
+    val deviceInfo: StateFlow<DeviceInfo?> = _deviceInfo.asStateFlow()
+
     // GATT connection
     private var bluetoothGatt: BluetoothGatt? = null
     private var commandCharacteristic: BluetoothGattCharacteristic? = null
@@ -178,11 +182,15 @@ class BleManager @Inject constructor(
         }
     }
 
+    // Hint name for reconnection (when gatt.device.name is null)
+    private var pendingDeviceNameHint: String? = null
+
     /**
      * Connect to a BLE device by address.
+     * @param nameHint Optional device name to use if gatt.device.name is null (for reconnection)
      */
     @SuppressLint("MissingPermission")
-    fun connect(address: String) {
+    fun connect(address: String, nameHint: String? = null) {
         if (_connectionState.value != BleConnectionState.DISCONNECTED) {
             Log.w(TAG, "Already connected or connecting")
             return
@@ -195,8 +203,9 @@ class BleManager @Inject constructor(
 
         userInitiatedDisconnect = false
         lastConnectedAddress = address
+        pendingDeviceNameHint = nameHint
         _connectionState.value = BleConnectionState.CONNECTING
-        Log.d(TAG, "Connecting to $address")
+        Log.d(TAG, "Connecting to $address (hint: $nameHint)")
 
         bluetoothGatt = device.connectGatt(
             context,
@@ -241,15 +250,22 @@ class BleManager @Inject constructor(
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    Log.d(TAG, "Connected to GATT server")
-                    _connectionState.value = BleConnectionState.DISCOVERING_SERVICES
-                    gatt.discoverServices()
+                    Log.d(TAG, "Connected to GATT server, requesting MTU")
+                    // Request larger MTU for telemetry frames (default 20 is too small)
+                    gatt.requestMtu(512)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     Log.d(TAG, "Disconnected from GATT server")
                     cleanup()
                 }
             }
+        }
+
+        @SuppressLint("MissingPermission")
+        override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+            Log.d(TAG, "MTU changed to $mtu (status=$status)")
+            _connectionState.value = BleConnectionState.DISCOVERING_SERVICES
+            gatt.discoverServices()
         }
 
         override fun onReadRemoteRssi(gatt: BluetoothGatt, rssi: Int, status: Int) {
@@ -299,17 +315,22 @@ class BleManager @Inject constructor(
                     // Read device info
                     val deviceInfoChar = service.getCharacteristic(BleConstants.CHAR_DEVICE_INFO)
                     if (deviceInfoChar != null) {
-                        gatt.readCharacteristic(deviceInfoChar)
+                        Log.d(TAG, "Reading device info characteristic...")
+                        val result = gatt.readCharacteristic(deviceInfoChar)
+                        Log.d(TAG, "readCharacteristic result: $result")
+                    } else {
+                        Log.w(TAG, "Device info characteristic not found")
                     }
 
                     _connectionState.value = BleConnectionState.CONNECTED
                     @SuppressLint("MissingPermission")
-                    val deviceName = gatt.device.name ?: "Unknown"
+                    val deviceName = gatt.device.name ?: pendingDeviceNameHint ?: "Unknown"
                     _connectedDevice.value = ConnectedDevice(
                         address = gatt.device.address,
                         name = deviceName
                     )
-                    Log.d(TAG, "Connection setup complete")
+                    pendingDeviceNameHint = null
+                    Log.d(TAG, "Connection setup complete (name: $deviceName)")
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to enable notifications", e)
                     disconnect()
@@ -327,8 +348,14 @@ class BleManager @Inject constructor(
 
             when (characteristic.uuid) {
                 BleConstants.CHAR_DEVICE_INFO -> {
-                    Log.d(TAG, "Device info read: ${value.size} bytes")
-                    // Parse device info if needed
+                    Log.d(TAG, "Device info read: ${value.size} bytes, data=${value.joinToString(" ") { "%02X".format(it) }}")
+                    val info = DeviceInfo.parse(value)
+                    if (info != null) {
+                        Log.d(TAG, "Parsed device info: proto=${info.protocolVersion}, fw=${info.firmwareVersionString}, build=${info.buildId}, caps=0x${info.capabilityBits.toString(16)}")
+                        _deviceInfo.value = info
+                    } else {
+                        Log.w(TAG, "Failed to parse device info")
+                    }
                 }
             }
         }
@@ -376,11 +403,13 @@ class BleManager @Inject constructor(
     }
 
     private fun handleIncomingData(charUuid: java.util.UUID, data: ByteArray) {
+        Log.d(TAG, "Received ${data.size} bytes from $charUuid: ${data.joinToString(" ") { "%02X".format(it) }}")
         val frame = WireProtocol.decodeFrame(data)
         if (frame == null) {
-            Log.w(TAG, "Failed to decode frame from ${charUuid}")
+            Log.w(TAG, "Failed to decode frame from ${charUuid}, size=${data.size}")
             return
         }
+        Log.d(TAG, "Decoded frame: ver=${frame.protoVer}, type=${frame.msgType}, seq=${frame.seq}, payload=${frame.payload.size}B")
 
         when (frame.msgType) {
             MessageType.TELEMETRY_SNAPSHOT -> {

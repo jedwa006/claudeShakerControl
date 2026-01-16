@@ -116,7 +116,8 @@ class BleMachineRepository @Inject constructor(
             bleManager.connectionState.collect { state ->
                 when (state) {
                     BleConnectionState.CONNECTED -> {
-                        // Start session after connection
+                        // Start session after connection (small delay to ensure GATT is stable)
+                        delay(200)
                         openSession()
                     }
                     BleConnectionState.DISCONNECTED -> {
@@ -149,6 +150,29 @@ class BleMachineRepository @Inject constructor(
             }
         }
 
+        // Process device info updates
+        scope.launch {
+            bleManager.deviceInfo.collect { info ->
+                if (info != null) {
+                    val currentStatus = _systemStatus.value
+                    _systemStatus.value = currentStatus.copy(
+                        firmwareVersion = info.firmwareVersionString,
+                        protocolVersion = info.protocolVersion
+                    )
+                }
+            }
+        }
+
+        // Update device name when connected
+        scope.launch {
+            bleManager.connectedDevice.collect { device ->
+                val currentStatus = _systemStatus.value
+                _systemStatus.value = currentStatus.copy(
+                    deviceName = device?.name
+                )
+            }
+        }
+
         // Collect RSSI readings
         scope.launch {
             bleManager.rssi.collect { rssi ->
@@ -172,12 +196,13 @@ class BleMachineRepository @Inject constructor(
 
     private suspend fun openSession() {
         val nonce = Random.nextInt()
-        Log.d(TAG, "Opening session with nonce: $nonce")
+        Log.w(TAG, ">>> Opening session with nonce: $nonce")
 
         val ack = bleManager.sendCommand(
             cmdId = CommandId.OPEN_SESSION,
             payload = CommandPayloadBuilder.openSession(nonce)
         )
+        Log.w(TAG, "<<< OPEN_SESSION ACK received: ${ack?.status}, optionalData size=${ack?.optionalData?.size ?: 0}")
 
         if (ack != null && ack.status == AckStatus.OK) {
             val sessionData = CommandAckParser.parseOpenSessionAckData(ack.optionalData)
@@ -188,12 +213,12 @@ class BleMachineRepository @Inject constructor(
                 lastBleHeartbeatTime = now
                 lastKeepaliveTime = now
                 rssiHistory.clear() // Clear RSSI history on new session
-                Log.d(TAG, "Session opened: id=${sessionData.sessionId}, lease=${sessionData.leaseMs}ms")
+                Log.w(TAG, ">>> Session opened: id=${sessionData.sessionId}, lease=${sessionData.leaseMs}ms")
                 startHeartbeat()
                 startRssiPolling()
             }
         } else {
-            Log.e(TAG, "Failed to open session: ${ack?.status}")
+            Log.e(TAG, ">>> Failed to open session: ${ack?.status}, detail=${ack?.detail}")
         }
     }
 

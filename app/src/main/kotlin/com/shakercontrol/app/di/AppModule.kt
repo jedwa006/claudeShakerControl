@@ -25,7 +25,7 @@ abstract class AppModule {
     @Binds
     @Singleton
     abstract fun bindMachineRepository(
-        mockRepository: MockMachineRepository
+        bleRepository: BleMachineRepository
     ): MachineRepository
 
     /**

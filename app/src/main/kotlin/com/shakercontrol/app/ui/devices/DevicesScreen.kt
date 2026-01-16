@@ -1,5 +1,9 @@
 package com.shakercontrol.app.ui.devices
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -8,9 +12,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.core.content.PermissionChecker
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shakercontrol.app.data.ble.BleConnectionState
@@ -35,6 +42,47 @@ fun DevicesScreen(
     val autoReconnectEnabled by viewModel.autoReconnectEnabled.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+
+    // BLE permissions for Android 12+
+    val blePermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        arrayOf(
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT
+        )
+    } else {
+        arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+    }
+
+    fun hasBluetoothPermissions(): Boolean {
+        return blePermissions.all { permission ->
+            ContextCompat.checkSelfPermission(context, permission) == PermissionChecker.PERMISSION_GRANTED
+        }
+    }
+
+    var permissionDenied by remember { mutableStateOf(false) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.values.all { it }
+        if (allGranted) {
+            viewModel.startScan()
+            permissionDenied = false
+        } else {
+            permissionDenied = true
+        }
+    }
+
+    val onScanWithPermissionCheck: () -> Unit = {
+        if (hasBluetoothPermissions()) {
+            viewModel.startScan()
+        } else {
+            permissionLauncher.launch(blePermissions)
+        }
+    }
 
     // Collect UI events for feedback
     LaunchedEffect(Unit) {
@@ -77,7 +125,8 @@ fun DevicesScreen(
             lastConnectedDevice = lastConnectedDevice,
             autoReconnectEnabled = autoReconnectEnabled,
             isBluetoothEnabled = viewModel.isBluetoothEnabled,
-            onScanClick = { viewModel.startScan() },
+            permissionDenied = permissionDenied,
+            onScanClick = onScanWithPermissionCheck,
             onStopScanClick = { viewModel.stopScan() },
             onDeviceClick = { viewModel.connect(it) },
             onDisconnectClick = { viewModel.disconnect() },
@@ -103,6 +152,7 @@ private fun DevicesContent(
     lastConnectedDevice: LastConnectedDevice?,
     autoReconnectEnabled: Boolean,
     isBluetoothEnabled: Boolean,
+    permissionDenied: Boolean = false,
     onScanClick: () -> Unit,
     onStopScanClick: () -> Unit,
     onDeviceClick: (String) -> Unit,
@@ -126,6 +176,24 @@ private fun DevicesContent(
             ) {
                 Text(
                     text = "Bluetooth is disabled. Please enable Bluetooth to connect to devices.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // Permission denied warning
+        if (permissionDenied) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Bluetooth permissions are required to scan for devices. Please grant permissions in app settings.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                     modifier = Modifier.padding(16.dp)

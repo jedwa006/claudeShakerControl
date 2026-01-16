@@ -126,7 +126,7 @@ class DevicesViewModel @Inject constructor(
         delay(RECONNECT_DELAY_MS)
 
         if (bleManager.connectionState.value == BleConnectionState.DISCONNECTED) {
-            bleManager.connect(address)
+            bleManager.connect(address, nameHint = name)
 
             // Wait for connection result
             delay(5000) // Give it time to connect
@@ -153,17 +153,17 @@ class DevicesViewModel @Inject constructor(
         bleManager.stopScan()
     }
 
-    fun connect(address: String) {
+    fun connect(address: String, nameHint: String? = null) {
         reconnectAttempts = 0
         bleManager.stopScan()
-        bleManager.connect(address)
+        bleManager.connect(address, nameHint)
     }
 
     fun connectToLastDevice() {
         viewModelScope.launch {
             val lastDevice = lastConnectedDevice.value
             if (lastDevice != null && bleManager.connectionState.value == BleConnectionState.DISCONNECTED) {
-                connect(lastDevice.address)
+                connect(lastDevice.address, nameHint = lastDevice.name)
             }
         }
     }
