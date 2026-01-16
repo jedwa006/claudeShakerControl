@@ -52,3 +52,4 @@ signing.properties
 
 # Mac
 .DS_Store
+.kotlin/
