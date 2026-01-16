@@ -24,6 +24,8 @@ class BleManager @Inject constructor(
     companion object {
         private const val TAG = "BleManager"
         private const val SCAN_TIMEOUT_MS = 10_000L
+        private const val RECONNECT_DELAY_MS = 2_000L
+        private const val MAX_RECONNECT_ATTEMPTS = 3
     }
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -47,6 +49,16 @@ class BleManager @Inject constructor(
     // Connected device info
     private val _connectedDevice = MutableStateFlow<ConnectedDevice?>(null)
     val connectedDevice: StateFlow<ConnectedDevice?> = _connectedDevice.asStateFlow()
+
+    // Disconnect events for UI notification
+    private val _disconnectEvents = MutableSharedFlow<DisconnectEvent>(replay = 0)
+    val disconnectEvents: SharedFlow<DisconnectEvent> = _disconnectEvents.asSharedFlow()
+
+    // Track if disconnect was user-initiated
+    private var userInitiatedDisconnect = false
+
+    // Track last connected address for reconnection
+    private var lastConnectedAddress: String? = null
 
     // Incoming data channels
     private val _telemetryChannel = Channel<TelemetryParser.TelemetrySnapshot>(Channel.BUFFERED)
@@ -177,6 +189,8 @@ class BleManager @Inject constructor(
             return
         }
 
+        userInitiatedDisconnect = false
+        lastConnectedAddress = address
         _connectionState.value = BleConnectionState.CONNECTING
         Log.d(TAG, "Connecting to $address")
 
@@ -190,14 +204,24 @@ class BleManager @Inject constructor(
 
     /**
      * Disconnect from the current BLE device.
+     * @param userInitiated If true, this was requested by the user and won't trigger auto-reconnect
      */
     @SuppressLint("MissingPermission")
-    fun disconnect() {
+    fun disconnect(userInitiated: Boolean = true) {
+        userInitiatedDisconnect = userInitiated
+        if (userInitiated) {
+            lastConnectedAddress = null
+        }
         bluetoothGatt?.let { gatt ->
-            Log.d(TAG, "Disconnecting")
+            Log.d(TAG, "Disconnecting (user initiated: $userInitiated)")
             gatt.disconnect()
         }
     }
+
+    /**
+     * Get the last connected device address for reconnection.
+     */
+    fun getLastConnectedAddress(): String? = lastConnectedAddress
 
     private val gattCallback = object : BluetoothGattCallback() {
         @SuppressLint("MissingPermission")
@@ -462,12 +486,29 @@ class BleManager @Inject constructor(
 
     @SuppressLint("MissingPermission")
     private fun cleanup() {
+        val wasConnected = _connectionState.value == BleConnectionState.CONNECTED
+        val deviceAddress = _connectedDevice.value?.address
+        val deviceName = _connectedDevice.value?.name
+
         bluetoothGatt?.close()
         bluetoothGatt = null
         commandCharacteristic = null
         _connectionState.value = BleConnectionState.DISCONNECTED
         _connectedDevice.value = null
         pendingAcks.clear()
+
+        // Emit disconnect event if we were previously connected
+        if (wasConnected && deviceAddress != null) {
+            scope.launch {
+                _disconnectEvents.emit(
+                    DisconnectEvent(
+                        address = deviceAddress,
+                        name = deviceName ?: "Unknown",
+                        wasUserInitiated = userInitiatedDisconnect
+                    )
+                )
+            }
+        }
     }
 
     /**
@@ -506,4 +547,13 @@ data class ScannedDevice(
 data class ConnectedDevice(
     val address: String,
     val name: String
+)
+
+/**
+ * Event emitted when a BLE device disconnects.
+ */
+data class DisconnectEvent(
+    val address: String,
+    val name: String,
+    val wasUserInitiated: Boolean
 )
