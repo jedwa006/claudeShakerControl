@@ -322,11 +322,63 @@ Implementation follows `docs/MCU_docs/` specifications exactly:
 
 ## Stage 3 — Run Workflow Functionality
 
-**Date:** TBD
+**Date:** 2026-01-16
 **Branch:** `feature/stage-3-run-workflow`
-**Status:** Not Started
+**Status:** Complete
+**Merged to dev:** 2026-01-16 (commit b15a679)
 
-*(To be filled when Stage 3 begins)*
+### Scope Statement
+Implement live run progress countdown timer and command feedback UI. Fix protocol issues with pause command.
+
+### Features Implemented
+
+#### Timer Countdown
+- Run timer job updates progress every second during execution
+- Correctly tracks elapsed time across pause/resume cycles
+- Calculates current phase (milling/holding) and cycle number from elapsed time
+- Displays phase remaining and total remaining countdown in real-time
+- Automatically completes run when total time elapses
+- Timer freezes when paused, resumes from exact point
+
+#### Command Feedback
+- `RunUiEvent` sealed class for error/success events
+- `RunViewModel` exposes `uiEvents` flow for snackbar messages
+- `isExecutingCommand` state disables buttons while commands are in flight
+- `ControlsSection` shows loading spinner during command execution
+- Error snackbar on command failures with user-friendly messages
+
+#### Protocol Fixes
+- Added `pauseRun()` payload builder in `WireProtocol`
+- Fixed `pauseRun()` to use correct command ID `PAUSE_RUN` (0x0104)
+- Previously was incorrectly using `STOP_RUN` with `NORMAL_STOP`
+- Added `resumeRun()` convenience builder (uses `startRun` with NORMAL mode)
+
+### Files Modified
+- `data/ble/WireProtocol.kt` — Added pauseRun/resumeRun payload builders
+- `data/repository/BleMachineRepository.kt` — Run timer logic, pause accumulator
+- `ui/run/RunViewModel.kt` — UI events, command execution state
+- `ui/run/RunScreen.kt` — Snackbar host, event collection
+- `ui/run/RunSections.kt` — Loading indicator, disabled state handling
+
+### How to Test
+1. Build and install: `./gradlew installDebug`
+2. Navigate to Run screen
+3. Start a run (with mock data or connected MCU)
+4. Observe timer counting down in real-time
+5. Pause — timer should freeze
+6. Resume — timer should continue from where it was
+7. Stop — timer should reset
+8. (With no MCU) Start should fail and show snackbar error
+
+### Known Limitations
+- Recipe is not transferred to MCU (app-side timer only for now)
+- MCU should report run progress in telemetry for sync (future stage)
+- No recipe persistence (in-memory only)
+
+### Next Steps (Stage 4)
+1. Implement PID detail pages with real data
+2. Add SV editing and mode changes via BLE commands
+3. Display PID tuning parameters (if capability bit set)
 
 ---
 

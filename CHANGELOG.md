@@ -32,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Real Devices screen with scan/connect functionality
   - Device list showing name, address, RSSI
   - Connection state display
+- Run workflow functionality (Stage 3)
+  - Live timer countdown during runs with phase/cycle tracking
+  - Timer correctly pauses and resumes from exact point
+  - Command feedback with error snackbar on failures
+  - Loading indicator while commands are executing
+  - Buttons disabled during command execution
+
+### Fixed
+- PAUSE_RUN command now uses correct command ID (0x0104) instead of STOP_RUN
 
 ### Infrastructure
 - Android project with Kotlin 2.0.21 + Jetpack Compose
