@@ -615,6 +615,7 @@ ui/devices/
 **Date:** 2026-01-16
 **Branch:** `feature/stage-7-session-health`
 **Status:** Complete
+**Merged to dev:** 2026-01-16
 
 ### Scope Statement
 Implement session lease health monitoring with warning banners, surface heartbeat status in the Status Strip with visual indicators, and add RSSI history tracking for connection quality visualization.
