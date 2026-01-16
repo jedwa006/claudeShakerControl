@@ -15,6 +15,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shakercontrol.app.data.ble.BleConnectionState
 import com.shakercontrol.app.data.ble.ScannedDevice
+import com.shakercontrol.app.data.preferences.LastConnectedDevice
 import com.shakercontrol.app.ui.theme.ShakerControlTheme
 
 /**
@@ -30,19 +31,66 @@ fun DevicesScreen(
     val isScanning by viewModel.isScanning.collectAsStateWithLifecycle()
     val connectionState by viewModel.connectionState.collectAsStateWithLifecycle()
     val connectedDevice by viewModel.connectedDevice.collectAsStateWithLifecycle()
+    val lastConnectedDevice by viewModel.lastConnectedDevice.collectAsStateWithLifecycle()
+    val autoReconnectEnabled by viewModel.autoReconnectEnabled.collectAsStateWithLifecycle()
 
-    DevicesContent(
-        scannedDevices = scannedDevices,
-        isScanning = isScanning,
-        connectionState = connectionState,
-        connectedDeviceName = connectedDevice?.name,
-        connectedDeviceAddress = connectedDevice?.address,
-        isBluetoothEnabled = viewModel.isBluetoothEnabled,
-        onScanClick = { viewModel.startScan() },
-        onStopScanClick = { viewModel.stopScan() },
-        onDeviceClick = { viewModel.connect(it) },
-        onDisconnectClick = { viewModel.disconnect() }
-    )
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Collect UI events for feedback
+    LaunchedEffect(Unit) {
+        viewModel.uiEvents.collect { event ->
+            when (event) {
+                is DevicesUiEvent.ConnectionLost -> {
+                    val message = if (event.willReconnect) {
+                        "Connection lost to ${event.deviceName}. Reconnecting..."
+                    } else {
+                        "Connection lost to ${event.deviceName}."
+                    }
+                    snackbarHostState.showSnackbar(
+                        message = message,
+                        duration = SnackbarDuration.Short
+                    )
+                }
+                is DevicesUiEvent.ReconnectFailed -> {
+                    snackbarHostState.showSnackbar(
+                        message = "Failed to reconnect to ${event.deviceName}.",
+                        duration = SnackbarDuration.Short
+                    )
+                }
+                is DevicesUiEvent.ReconnectSucceeded -> {
+                    snackbarHostState.showSnackbar(
+                        message = "Reconnected successfully.",
+                        duration = SnackbarDuration.Short
+                    )
+                }
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        DevicesContent(
+            scannedDevices = scannedDevices,
+            isScanning = isScanning,
+            connectionState = connectionState,
+            connectedDeviceName = connectedDevice?.name,
+            connectedDeviceAddress = connectedDevice?.address,
+            lastConnectedDevice = lastConnectedDevice,
+            autoReconnectEnabled = autoReconnectEnabled,
+            isBluetoothEnabled = viewModel.isBluetoothEnabled,
+            onScanClick = { viewModel.startScan() },
+            onStopScanClick = { viewModel.stopScan() },
+            onDeviceClick = { viewModel.connect(it) },
+            onDisconnectClick = { viewModel.disconnect() },
+            onReconnectClick = { viewModel.connectToLastDevice() },
+            onForgetClick = { viewModel.forgetDevice() },
+            onAutoReconnectChange = { viewModel.setAutoReconnectEnabled(it) }
+        )
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
+    }
 }
 
 @Composable
@@ -52,11 +100,16 @@ private fun DevicesContent(
     connectionState: BleConnectionState,
     connectedDeviceName: String?,
     connectedDeviceAddress: String?,
+    lastConnectedDevice: LastConnectedDevice?,
+    autoReconnectEnabled: Boolean,
     isBluetoothEnabled: Boolean,
     onScanClick: () -> Unit,
     onStopScanClick: () -> Unit,
     onDeviceClick: (String) -> Unit,
-    onDisconnectClick: () -> Unit
+    onDisconnectClick: () -> Unit,
+    onReconnectClick: () -> Unit,
+    onForgetClick: () -> Unit,
+    onAutoReconnectChange: (Boolean) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -88,6 +141,18 @@ private fun DevicesContent(
                 deviceAddress = connectedDeviceAddress ?: "",
                 connectionState = connectionState,
                 onDisconnectClick = onDisconnectClick
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // Last connected device section (when disconnected)
+        if (connectionState == BleConnectionState.DISCONNECTED && lastConnectedDevice != null) {
+            LastConnectedDeviceCard(
+                deviceName = lastConnectedDevice.name,
+                deviceAddress = lastConnectedDevice.address,
+                onReconnectClick = onReconnectClick,
+                onForgetClick = onForgetClick,
+                enabled = isBluetoothEnabled
             )
             Spacer(modifier = Modifier.height(16.dp))
         }
@@ -168,32 +233,49 @@ private fun DevicesContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Connection state indicator
+        // Settings row
         Card(
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant
             )
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Connection state:",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = connectionState.name,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = when (connectionState) {
-                        BleConnectionState.CONNECTED -> MaterialTheme.colorScheme.primary
-                        BleConnectionState.DISCONNECTED -> MaterialTheme.colorScheme.onSurfaceVariant
-                        else -> MaterialTheme.colorScheme.tertiary
-                    }
-                )
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Auto-reconnect",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Switch(
+                        checked = autoReconnectEnabled,
+                        onCheckedChange = onAutoReconnectChange
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Connection state:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = connectionState.name,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when (connectionState) {
+                            BleConnectionState.CONNECTED -> MaterialTheme.colorScheme.primary
+                            BleConnectionState.DISCONNECTED -> MaterialTheme.colorScheme.onSurfaceVariant
+                            else -> MaterialTheme.colorScheme.tertiary
+                        }
+                    )
+                }
             }
         }
     }
@@ -255,6 +337,61 @@ private fun ConnectedDeviceCard(
                         strokeWidth = 2.dp,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LastConnectedDeviceCard(
+    deviceName: String,
+    deviceAddress: String,
+    onReconnectClick: () -> Unit,
+    onForgetClick: () -> Unit,
+    enabled: Boolean
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Last connected",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Text(
+                        text = deviceName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Text(
+                        text = deviceAddress,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onForgetClick) {
+                        Text("Forget")
+                    }
+                    Button(
+                        onClick = onReconnectClick,
+                        enabled = enabled
+                    ) {
+                        Text("Reconnect")
+                    }
                 }
             }
         }
@@ -342,11 +479,16 @@ private fun DevicesScreenPreview() {
                 connectionState = BleConnectionState.DISCONNECTED,
                 connectedDeviceName = null,
                 connectedDeviceAddress = null,
+                lastConnectedDevice = LastConnectedDevice("AA:BB:CC:DD:EE:01", "SYS-CTRL-001"),
+                autoReconnectEnabled = true,
                 isBluetoothEnabled = true,
                 onScanClick = {},
                 onStopScanClick = {},
                 onDeviceClick = {},
-                onDisconnectClick = {}
+                onDisconnectClick = {},
+                onReconnectClick = {},
+                onForgetClick = {},
+                onAutoReconnectChange = {}
             )
         }
     }
@@ -363,11 +505,16 @@ private fun DevicesScreenConnectedPreview() {
                 connectionState = BleConnectionState.CONNECTED,
                 connectedDeviceName = "SYS-CTRL-001",
                 connectedDeviceAddress = "AA:BB:CC:DD:EE:01",
+                lastConnectedDevice = LastConnectedDevice("AA:BB:CC:DD:EE:01", "SYS-CTRL-001"),
+                autoReconnectEnabled = true,
                 isBluetoothEnabled = true,
                 onScanClick = {},
                 onStopScanClick = {},
                 onDeviceClick = {},
-                onDisconnectClick = {}
+                onDisconnectClick = {},
+                onReconnectClick = {},
+                onForgetClick = {},
+                onAutoReconnectChange = {}
             )
         }
     }

@@ -527,3 +527,83 @@ Implement subsystem capability model for UI gating and enable alarm acknowledgme
 1. Wire Devices screen to real BLE scanning/connecting
 2. Add reconnection logic on unexpected disconnect
 3. Surface session lease timeout warnings in UI
+
+---
+
+## Stage 6 — BLE Reconnection + Device Persistence
+
+**Date:** 2026-01-16
+**Branch:** `feature/stage-6-ble-reconnection`
+**Status:** Complete
+
+### Scope Statement
+Implement auto-reconnection on unexpected BLE disconnect, persist last connected device for quick reconnection, and add connection feedback UI.
+
+### Features Implemented
+
+#### Device Preferences Persistence
+- `DevicePreferences` DataStore for persisting:
+  - Last connected device (address, name)
+  - Auto-reconnect preference toggle
+- Saved automatically when device connects
+- Cleared when user taps "Forget"
+
+#### Auto-Reconnection Logic
+- `BleManager` tracks user-initiated vs unexpected disconnects
+- `DisconnectEvent` emitted when device disconnects
+- `DevicesViewModel` handles reconnection:
+  - Up to 3 reconnect attempts with 2-second delay
+  - Only reconnects on unexpected disconnects
+  - Respects auto-reconnect user preference
+
+#### Devices Screen Enhancements
+- **Last Connected Device Card**: Shows when disconnected with saved device
+  - "Reconnect" button to quickly reconnect
+  - "Forget" button to clear saved device
+- **Auto-reconnect Toggle**: Switch to enable/disable auto-reconnection
+- **Connection Feedback Snackbars**:
+  - "Connection lost to X. Reconnecting..."
+  - "Reconnected successfully."
+  - "Failed to reconnect to X."
+
+### Architecture
+
+```
+data/preferences/
+└── DevicePreferences.kt    # DataStore for device settings
+
+data/ble/
+└── BleManager.kt           # Added disconnect events, user-initiated tracking
+
+ui/devices/
+├── DevicesViewModel.kt     # Auto-reconnect logic, UI events
+└── DevicesScreen.kt        # Last device card, auto-reconnect toggle
+```
+
+### Files Created
+- `data/preferences/DevicePreferences.kt` — 65 lines
+
+### Files Modified
+- `gradle/libs.versions.toml` — Added DataStore dependency
+- `app/build.gradle.kts` — Added DataStore dependency
+- `data/ble/BleManager.kt` — Added disconnect events, `DisconnectEvent` class
+- `ui/devices/DevicesViewModel.kt` — Full rewrite with auto-reconnect
+- `ui/devices/DevicesScreen.kt` — Last device card, snackbars, toggle
+
+### How to Test
+1. Build and install: `./gradlew installDebug`
+2. Navigate to Devices screen
+3. (No BLE device) Shows empty "Last connected" since no device saved
+4. (With BLE device) Connect to a device
+5. Device info is persisted to DataStore
+6. Force disconnect (turn off controller)
+7. Observe snackbar "Connection lost... Reconnecting..."
+8. After 3 failed attempts, see "Failed to reconnect"
+9. Tap "Reconnect" to manually retry
+10. Tap "Forget" to clear saved device
+11. Toggle auto-reconnect off to disable automatic retry
+
+### Next Steps (Stage 7)
+1. Add session lease timeout warning banner
+2. Surface heartbeat health in Status Strip
+3. Add connection quality indicator (RSSI history)
