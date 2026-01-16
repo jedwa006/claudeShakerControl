@@ -14,6 +14,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shakercontrol.app.domain.model.*
 import com.shakercontrol.app.ui.theme.ShakerControlTheme
+import kotlinx.coroutines.flow.collectLatest
 
 /**
  * Run screen (Cockpit) - professional control center during operation.
@@ -30,8 +31,27 @@ fun RunScreen(
     val runProgress by viewModel.runProgress.collectAsStateWithLifecycle()
     val pidData by viewModel.pidData.collectAsStateWithLifecycle()
     val interlockStatus by viewModel.interlockStatus.collectAsStateWithLifecycle()
+    val isExecutingCommand by viewModel.isExecutingCommand.collectAsStateWithLifecycle()
 
+    val snackbarHostState = remember { SnackbarHostState() }
     var showStopDialog by remember { mutableStateOf(false) }
+
+    // Collect UI events for snackbar
+    LaunchedEffect(viewModel) {
+        viewModel.uiEvents.collectLatest { event ->
+            when (event) {
+                is RunUiEvent.CommandError -> {
+                    snackbarHostState.showSnackbar(
+                        message = event.message,
+                        duration = SnackbarDuration.Short
+                    )
+                }
+                is RunUiEvent.CommandSuccess -> {
+                    // Optionally show success feedback
+                }
+            }
+        }
+    }
 
     if (showStopDialog) {
         StopConfirmationDialog(
@@ -43,19 +63,33 @@ fun RunScreen(
         )
     }
 
-    RunScreenContent(
-        systemStatus = systemStatus,
-        recipe = recipe,
-        runProgress = runProgress,
-        pidData = pidData,
-        interlockStatus = interlockStatus,
-        onRecipeChange = viewModel::updateRecipe,
-        onStart = viewModel::startRun,
-        onPause = viewModel::pauseRun,
-        onResume = viewModel::resumeRun,
-        onStop = { showStopDialog = true },
-        onNavigateToPid = onNavigateToPid
-    )
+    Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+        }
+    ) { paddingValues ->
+        RunScreenContent(
+            systemStatus = systemStatus,
+            recipe = recipe,
+            runProgress = runProgress,
+            pidData = pidData,
+            interlockStatus = interlockStatus,
+            isExecutingCommand = isExecutingCommand,
+            onRecipeChange = viewModel::updateRecipe,
+            onStart = viewModel::startRun,
+            onPause = viewModel::pauseRun,
+            onResume = viewModel::resumeRun,
+            onStop = { showStopDialog = true },
+            onNavigateToPid = onNavigateToPid,
+            modifier = Modifier.padding(paddingValues)
+        )
+    }
 }
 
 @Composable
@@ -65,15 +99,17 @@ private fun RunScreenContent(
     runProgress: RunProgress?,
     pidData: List<PidData>,
     interlockStatus: InterlockStatus,
+    isExecutingCommand: Boolean,
     onRecipeChange: (Recipe) -> Unit,
     onStart: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
-    onNavigateToPid: (Int) -> Unit
+    onNavigateToPid: (Int) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .padding(16.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -95,6 +131,7 @@ private fun RunScreenContent(
             ControlsSection(
                 machineState = systemStatus.machineState,
                 connectionState = systemStatus.connectionState,
+                isExecutingCommand = isExecutingCommand,
                 onStart = onStart,
                 onPause = onPause,
                 onResume = onResume,
@@ -197,6 +234,7 @@ private fun RunScreenPreview() {
                     isHeatersEnabled = true,
                     isMotorEnabled = true
                 ),
+                isExecutingCommand = false,
                 onRecipeChange = {},
                 onStart = {},
                 onPause = {},
