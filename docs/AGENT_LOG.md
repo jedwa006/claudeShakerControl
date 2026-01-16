@@ -28,7 +28,8 @@ This document tracks decisions, assumptions, and changes across development stag
 
 **Date:** 2026-01-15
 **Branch:** `chore/stage-0-docs`
-**Status:** In Progress
+**Status:** Complete
+**Merged to dev:** 2026-01-15 (commit 718ec00)
 
 ### Scope Statement
 Establish project documentation scaffolding, framework decision, and implementation plan. No application code in this stage.
