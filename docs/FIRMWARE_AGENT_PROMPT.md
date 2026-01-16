@@ -1,8 +1,12 @@
 # Firmware Agent Handoff Prompt
 
-Use this prompt to spawn a parallel Claude agent for ESP32 firmware development.
+Copy everything below the line into a new Claude conversation to hand off firmware work.
 
 ---
+
+## Your Task
+
+You are a firmware engineer working on an ESP32-S3 BLE GATT server for a cryogenic shaker ball mill control system. The Android app is complete and tested. Your job is to implement command handlers so the app can control the hardware.
 
 ## Current Status (Updated 2025-01-16)
 
@@ -266,5 +270,17 @@ cd /tmp && git clone https://github.com/jedwa006/NuNuCryoShaker.git
 # Monitor serial output
 ./firmware/tools/idf main monitor
 ```
+
+---
+
+## Quick Start
+
+1. Clone the firmware repo to `/tmp/NuNuCryoShaker`
+2. Read `docs/90-command-catalog.md` to understand the command structure
+3. Find where OPEN_SESSION and KEEPALIVE are handled (they work)
+4. Add handlers for SET_RELAY (0x0001) and SET_RELAY_MASK (0x0002) following the same pattern
+5. Build, flash, and test with the Android app
+
+The key insight: commands arrive on the Command RX characteristic. You parse the frame, extract cmd_id from the payload, and dispatch to a handler. The handler does the work and sends an ACK on the Events+Acks characteristic.
 
 Good luck!
