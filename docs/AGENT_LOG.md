@@ -384,11 +384,65 @@ Implement live run progress countdown timer and command feedback UI. Fix protoco
 
 ## Stage 4 — PID Summaries + Pages
 
-**Date:** TBD
+**Date:** 2026-01-16
 **Branch:** `feature/stage-4-pid-pages`
-**Status:** Not Started
+**Status:** Complete
 
-*(To be filled when Stage 4 begins)*
+### Scope Statement
+Implement functional PID detail pages with real setpoint editing and mode control via BLE commands.
+
+### Features Implemented
+
+#### Setpoint Control
+- Text input field with current setpoint value
+- Apply button to send new setpoint to MCU
+- Keyboard "Done" action also applies the value
+- Shows current setpoint below input for reference
+- Input disabled when not connected or command executing
+
+#### Mode Control
+- Segmented button row for Stop/Manual/Auto modes
+- Color-coded selection (red for Stop, teal for Manual, blue for Auto)
+- Mode description text explains current mode behavior
+- Disabled when not connected or command executing
+
+#### Command Feedback
+- `PidUiEvent` sealed class for error/success events
+- `isExecutingCommand` state disables controls while in flight
+- Loading spinner in card headers during command execution
+- Error snackbar on command failures
+
+#### Repository Interface
+- Added `setSetpoint(controllerId, setpoint): Result<Unit>`
+- Added `setMode(controllerId, mode): Result<Unit>`
+- Implemented in both `BleMachineRepository` and `MockMachineRepository`
+
+### Protocol Details
+- `SET_SV` command (0x0020): Setpoint scaled x10 (e.g., 30.0°C → 300)
+- `SET_MODE` command (0x0021): Mode codes 0=Stop, 1=Manual, 2=Auto, 3=Program
+- Both commands include session ID validation
+- Optimistic UI update on successful ACK
+
+### Files Modified
+- `data/repository/MachineRepository.kt` — Added setSetpoint/setMode interface
+- `data/repository/BleMachineRepository.kt` — BLE command implementation
+- `data/repository/MockMachineRepository.kt` — Mock implementation with delay
+- `ui/pid/PidDetailViewModel.kt` — Command handling with UI events
+- `ui/pid/PidDetailScreen.kt` — Full setpoint/mode control UI
+
+### How to Test
+1. Build and install: `./gradlew installDebug`
+2. Navigate to Home → tap any PID row (Axle/Orbital/LN2)
+3. (Mock mode) Controls are enabled when connection state is LIVE
+4. Change setpoint: type new value, tap Apply
+5. Change mode: tap Stop/Manual/Auto buttons
+6. Observe optimistic UI updates
+7. (With MCU) Verify commands are sent and ACKs received
+
+### Next Steps (Stage 5)
+1. Implement capability bit gating for UI controls
+2. Add alarm list screen with acknowledge functionality
+3. Implement alarm banner and notification system
 
 ---
 

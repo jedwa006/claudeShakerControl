@@ -338,4 +338,43 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
             isServiceModeEnabled = false
         )
     }
+
+    override suspend fun setSetpoint(controllerId: Int, setpoint: Float): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+
+        // Simulate command delay
+        delay(200)
+
+        // Update local state
+        val currentPidList = _pidData.value.toMutableList()
+        val index = currentPidList.indexOfFirst { it.controllerId == controllerId }
+        if (index >= 0) {
+            currentPidList[index] = currentPidList[index].copy(setpointValue = setpoint)
+            _pidData.value = currentPidList
+        }
+        return Result.success(Unit)
+    }
+
+    override suspend fun setMode(controllerId: Int, mode: PidMode): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+
+        // Simulate command delay
+        delay(200)
+
+        // Update local state
+        val currentPidList = _pidData.value.toMutableList()
+        val index = currentPidList.indexOfFirst { it.controllerId == controllerId }
+        if (index >= 0) {
+            currentPidList[index] = currentPidList[index].copy(
+                mode = mode,
+                isEnabled = mode != PidMode.STOP
+            )
+            _pidData.value = currentPidList
+        }
+        return Result.success(Unit)
+    }
 }
