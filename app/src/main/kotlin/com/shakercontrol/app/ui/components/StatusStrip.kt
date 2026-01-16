@@ -15,6 +15,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.shakercontrol.app.domain.model.*
 import com.shakercontrol.app.ui.theme.*
@@ -69,7 +70,8 @@ fun StatusStrip(
             ) {
                 ConnectionChip(
                     connectionState = systemStatus.connectionState,
-                    rssiDbm = systemStatus.rssiDbm,
+                    rssiDbm = systemStatus.averageRssi,
+                    signalQuality = systemStatus.signalQuality,
                     onClick = onConnectionClick
                 )
 
@@ -85,6 +87,17 @@ fun StatusStrip(
                 MachineStateChip(
                     machineState = systemStatus.machineState
                 )
+
+                // Show session lease warning chip when not OK
+                if (systemStatus.sessionLeaseStatus != SessionLeaseStatus.OK &&
+                    systemStatus.sessionLeaseStatus != SessionLeaseStatus.NO_SESSION) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    SessionLeaseChip(
+                        sessionLeaseStatus = systemStatus.sessionLeaseStatus,
+                        leaseAgeMs = systemStatus.sessionLeaseAgeMs,
+                        leaseMs = systemStatus.sessionLeaseMs
+                    )
+                }
             }
 
             // Right: Alarms + Service mode
@@ -111,6 +124,7 @@ fun StatusStrip(
 private fun ConnectionChip(
     connectionState: ConnectionState,
     rssiDbm: Int?,
+    signalQuality: SignalQuality,
     onClick: () -> Unit
 ) {
     val backgroundColor = when (connectionState) {
@@ -131,11 +145,43 @@ private fun ConnectionChip(
 
     StatusChip(
         label = connectionState.displayName,
-        secondaryText = if (connectionState.isConnected && rssiDbm != null) "RSSI: $rssiDbm dBm" else null,
+        secondaryText = if (connectionState.isConnected && rssiDbm != null) "${signalQuality.displayName} ($rssiDbm dBm)" else null,
         backgroundColor = backgroundColor,
         contentColor = contentColor,
-        onClick = onClick
+        onClick = onClick,
+        icon = if (connectionState.isConnected) {
+            { SignalBars(bars = signalQuality.bars, color = contentColor) }
+        } else null
     )
+}
+
+/**
+ * Signal strength bars indicator.
+ */
+@Composable
+private fun SignalBars(
+    bars: Int,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        val heights = listOf(6.dp, 9.dp, 12.dp, 15.dp)
+        heights.forEachIndexed { index, height ->
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(height)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(
+                        if (index < bars) color else color.copy(alpha = 0.3f)
+                    )
+            )
+        }
+    }
 }
 
 @Composable
@@ -166,6 +212,53 @@ private fun McuHeartbeatChip(
         secondaryText = secondaryText,
         backgroundColor = backgroundColor,
         contentColor = contentColor
+    )
+}
+
+@Composable
+private fun SessionLeaseChip(
+    sessionLeaseStatus: SessionLeaseStatus,
+    leaseAgeMs: Long,
+    leaseMs: Int
+) {
+    val backgroundColor = when (sessionLeaseStatus) {
+        SessionLeaseStatus.EXPIRED -> SemanticColors.Critical.copy(alpha = 0.3f)
+        SessionLeaseStatus.WARNING -> SemanticColors.Warning.copy(alpha = 0.2f)
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+
+    val contentColor = when (sessionLeaseStatus) {
+        SessionLeaseStatus.EXPIRED -> SemanticColors.Critical
+        SessionLeaseStatus.WARNING -> SemanticColors.Warning
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    val label = when (sessionLeaseStatus) {
+        SessionLeaseStatus.EXPIRED -> "Session: Expired"
+        SessionLeaseStatus.WARNING -> "Session: Stale"
+        else -> "Session: ${sessionLeaseStatus.displayName}"
+    }
+
+    val percentage = ((leaseAgeMs.toFloat() / leaseMs) * 100).toInt().coerceAtMost(999)
+    val secondaryText = if (sessionLeaseStatus == SessionLeaseStatus.EXPIRED) {
+        "Reconnecting..."
+    } else {
+        "$percentage% of lease"
+    }
+
+    StatusChip(
+        label = label,
+        secondaryText = secondaryText,
+        backgroundColor = backgroundColor,
+        contentColor = contentColor,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = contentColor
+            )
+        }
     )
 }
 

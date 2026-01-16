@@ -607,3 +607,109 @@ ui/devices/
 1. Add session lease timeout warning banner
 2. Surface heartbeat health in Status Strip
 3. Add connection quality indicator (RSSI history)
+
+---
+
+## Stage 7 — Session Health + Signal Quality
+
+**Date:** 2026-01-16
+**Branch:** `feature/stage-7-session-health`
+**Status:** Complete
+
+### Scope Statement
+Implement session lease health monitoring with warning banners, surface heartbeat status in the Status Strip with visual indicators, and add RSSI history tracking for connection quality visualization.
+
+### Features Implemented
+
+#### Session Lease Monitoring
+- `SessionLeaseStatus` enum: `NO_SESSION`, `OK`, `WARNING`, `EXPIRED`
+- Warning triggered at 70% of lease time (`LEASE_WARNING_THRESHOLD`)
+- Expired when lease age exceeds lease duration
+- `SessionLeaseWarningBanner` component:
+  - Animated expand/collapse visibility
+  - Warning (amber): "Session approaching timeout. Heartbeat may be delayed."
+  - Expired (red): "Session expired. Commands may not be accepted. Check connection."
+
+#### Session Lease Chip in Status Strip
+- Shows when session is in WARNING or EXPIRED state
+- Displays percentage of lease consumed
+- Color-coded: amber for warning, red for expired
+- Warning icon for visual emphasis
+
+#### Signal Quality Indicator
+- `SignalQuality` enum: `UNKNOWN`, `POOR`, `FAIR`, `GOOD`, `EXCELLENT`
+- RSSI thresholds: Excellent >= -50 dBm, Good >= -65 dBm, Fair >= -80 dBm
+- RSSI history tracking (last 10 readings for smoothed quality)
+- `SignalBars` composable: 4-bar indicator with filled/unfilled bars
+- Updated `ConnectionChip` to show signal bars and quality description
+
+#### RSSI Polling
+- `BleManager.readRssi()` requests RSSI from connected device
+- RSSI poll job runs every 2 seconds when session is active
+- RSSI values collected and stored in history
+- Average RSSI computed for stable quality indication
+
+### Architecture
+
+```
+domain/model/
+├── SystemStatus.kt            # Added session lease fields, RSSI history, signal quality
+
+data/ble/
+├── BleManager.kt              # Added readRssi(), onReadRemoteRssi callback, rssi StateFlow
+
+data/repository/
+└── BleMachineRepository.kt    # RSSI polling job, RSSI history tracking, lease age tracking
+
+ui/components/
+├── StatusStrip.kt             # Added SessionLeaseChip, SignalBars, updated ConnectionChip
+└── SessionLeaseWarningBanner.kt  # New animated warning banner
+
+ui/
+└── ShakerControlApp.kt        # Added SessionLeaseWarningBanner to main layout
+```
+
+### SystemStatus Enhancements
+- `sessionLeaseMs: Int` — Lease duration from MCU (default 3000ms)
+- `sessionLeaseAgeMs: Long` — Time since last keepalive
+- `rssiHistory: List<Int>` — Recent RSSI readings
+- `sessionLeaseStatus: SessionLeaseStatus` — Computed lease health
+- `averageRssi: Int?` — Smoothed RSSI from history
+- `signalQuality: SignalQuality` — Computed from average RSSI
+
+### Files Created
+- `ui/components/SessionLeaseWarningBanner.kt` — 90 lines
+
+### Files Modified
+- `domain/model/SystemStatus.kt` — Added session lease and signal quality models
+- `data/ble/BleManager.kt` — Added RSSI reading capability
+- `data/repository/BleMachineRepository.kt` — Added RSSI polling, session tracking
+- `ui/components/StatusStrip.kt` — Added SessionLeaseChip, SignalBars
+- `ui/ShakerControlApp.kt` — Added warning banner to layout
+
+### How to Test
+1. Build and install: `./gradlew installDebug`
+2. Navigate to any screen
+3. (Without BLE device) Status shows "Disconnected" with no signal bars
+4. (With BLE device) Connect to device
+5. Observe:
+   - Signal bars appear in connection chip (0-4 bars based on RSSI)
+   - Signal quality text shows "Excellent/Good/Fair/Poor" with dBm
+   - RSSI updates every 2 seconds
+6. To test session lease warning:
+   - Simulate keepalive failure (requires MCU or mock)
+   - At 70% lease time: amber "Session: Stale" chip appears
+   - Banner shows: "Session approaching timeout..."
+   - At 100% lease time: red "Session: Expired" chip appears
+   - Banner shows: "Session expired. Commands may not be accepted."
+
+### Protocol Details
+- RSSI read via `BluetoothGatt.readRemoteRssi()`
+- Result arrives via `onReadRemoteRssi` callback
+- Polling interval: 2000ms (separate from keepalive)
+- History size: 10 readings for smoothing
+
+### Next Steps (Stage 8)
+1. Add recipe persistence and SD card management
+2. Implement recipe transfer to MCU
+3. Add QR code recipe import

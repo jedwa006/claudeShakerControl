@@ -22,6 +22,7 @@ class BleMachineRepository @Inject constructor(
 
     companion object {
         private const val TAG = "BleMachineRepository"
+        private const val RSSI_POLL_INTERVAL_MS = 2000L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -30,11 +31,16 @@ class BleMachineRepository @Inject constructor(
     private var sessionId: Int? = null
     private var leaseMs: Int = BleConstants.DEFAULT_LEASE_MS
     private var heartbeatJob: Job? = null
+    private var lastKeepaliveTime: Long = 0L
+    private var rssiPollJob: Job? = null
 
     // Run progress timer
     private var runTimerJob: Job? = null
     private var runStartTime: Long = 0L
     private var pausedElapsedMs: Long = 0L
+
+    // RSSI history for signal quality tracking
+    private val rssiHistory = mutableListOf<Int>()
 
     // Internal mutable state
     private val _systemStatus = MutableStateFlow(SystemStatus.DISCONNECTED)
@@ -62,6 +68,9 @@ class BleMachineRepository @Inject constructor(
         _systemStatus,
         bleManager.connectionState
     ) { status, bleState ->
+        val now = System.currentTimeMillis()
+        val sessionLeaseAge = if (lastKeepaliveTime > 0) now - lastKeepaliveTime else 0L
+
         val connectionState = when (bleState) {
             BleConnectionState.DISCONNECTED -> ConnectionState.DISCONNECTED
             BleConnectionState.CONNECTING -> ConnectionState.CONNECTING
@@ -69,7 +78,7 @@ class BleMachineRepository @Inject constructor(
             BleConnectionState.ENABLING_NOTIFICATIONS -> ConnectionState.CONNECTING
             BleConnectionState.CONNECTED -> {
                 if (sessionId != null) {
-                    if (System.currentTimeMillis() - lastBleHeartbeatTime < leaseMs) {
+                    if (sessionLeaseAge < leaseMs) {
                         ConnectionState.LIVE
                     } else {
                         ConnectionState.DEGRADED
@@ -83,7 +92,10 @@ class BleMachineRepository @Inject constructor(
         status.copy(
             connectionState = connectionState,
             deviceName = bleManager.connectedDevice.value?.name,
-            bleHeartbeatAgeMs = System.currentTimeMillis() - lastBleHeartbeatTime
+            bleHeartbeatAgeMs = now - lastBleHeartbeatTime,
+            sessionLeaseMs = leaseMs,
+            sessionLeaseAgeMs = sessionLeaseAge,
+            rssiHistory = rssiHistory.toList()
         )
     }.stateIn(
         scope = scope,
@@ -136,6 +148,26 @@ class BleMachineRepository @Inject constructor(
                 processAck(ack)
             }
         }
+
+        // Collect RSSI readings
+        scope.launch {
+            bleManager.rssi.collect { rssi ->
+                if (rssi != null) {
+                    updateRssiHistory(rssi)
+                }
+            }
+        }
+    }
+
+    private fun updateRssiHistory(rssi: Int) {
+        rssiHistory.add(rssi)
+        // Keep only the last N readings
+        while (rssiHistory.size > SystemStatus.RSSI_HISTORY_SIZE) {
+            rssiHistory.removeAt(0)
+        }
+        // Update the current RSSI in system status
+        val currentStatus = _systemStatus.value
+        _systemStatus.value = currentStatus.copy(rssiDbm = rssi)
     }
 
     private suspend fun openSession() {
@@ -152,19 +184,37 @@ class BleMachineRepository @Inject constructor(
             if (sessionData != null) {
                 sessionId = sessionData.sessionId
                 leaseMs = sessionData.leaseMs
-                lastBleHeartbeatTime = System.currentTimeMillis()
+                val now = System.currentTimeMillis()
+                lastBleHeartbeatTime = now
+                lastKeepaliveTime = now
+                rssiHistory.clear() // Clear RSSI history on new session
                 Log.d(TAG, "Session opened: id=${sessionData.sessionId}, lease=${sessionData.leaseMs}ms")
                 startHeartbeat()
+                startRssiPolling()
             }
         } else {
             Log.e(TAG, "Failed to open session: ${ack?.status}")
         }
     }
 
+    private fun startRssiPolling() {
+        rssiPollJob?.cancel()
+        rssiPollJob = scope.launch {
+            while (isActive) {
+                bleManager.readRssi()
+                delay(RSSI_POLL_INTERVAL_MS)
+            }
+        }
+    }
+
     private fun closeSession() {
         heartbeatJob?.cancel()
         heartbeatJob = null
+        rssiPollJob?.cancel()
+        rssiPollJob = null
         sessionId = null
+        lastKeepaliveTime = 0L
+        rssiHistory.clear()
     }
 
     private fun startHeartbeat() {
@@ -186,7 +236,9 @@ class BleMachineRepository @Inject constructor(
         )
 
         // Update heartbeat time optimistically
-        lastBleHeartbeatTime = System.currentTimeMillis()
+        val now = System.currentTimeMillis()
+        lastBleHeartbeatTime = now
+        lastKeepaliveTime = now
     }
 
     private fun startRunTimer() {
