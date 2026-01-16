@@ -109,11 +109,105 @@ Stage 0 is documentation only. Verify:
 
 ## Stage 1 — Bootstrap + UI Skeleton
 
-**Date:** TBD
+**Date:** 2026-01-16
 **Branch:** `feature/stage-1-ui-skeleton`
-**Status:** Not Started
+**Status:** Complete
+**Merged to dev:** 2026-01-16 (commit 768d9d8)
 
-*(To be filled when Stage 1 begins)*
+### Scope Statement
+Create the complete Android project scaffolding with Kotlin/Compose/Hilt and implement all UI screens as skeletons with mock data.
+
+### Architecture Implemented
+
+```
+app/src/main/kotlin/com/shakercontrol/app/
+├── MainActivity.kt           # Entry point
+├── ShakerControlApp.kt       # Hilt Application class
+├── data/repository/
+│   ├── MachineRepository.kt  # Interface
+│   └── MockMachineRepository.kt  # Mock implementation
+├── di/
+│   └── AppModule.kt          # Hilt DI module
+├── domain/model/
+│   ├── Alarm.kt              # Alarm with severity, source, state
+│   ├── ConnectionState.kt    # BLE states (DISCONNECTED → LIVE)
+│   ├── MachineState.kt       # IDLE, READY, RUNNING, PAUSED, FAULT, E_STOP
+│   ├── PidData.kt            # PID with PV/SV/capability level
+│   ├── Recipe.kt             # Interval cycle with hold timing
+│   └── SystemStatus.kt       # Combined status, IO, interlocks
+└── ui/
+    ├── MainViewModel.kt
+    ├── ShakerControlApp.kt   # Main composable with drawer nav
+    ├── alarms/               # Alarms list screen
+    ├── components/           # StatusStrip, LedIndicator, ServiceModeBanner
+    ├── devices/              # BLE scan/connect placeholder
+    ├── diagnostics/          # Connection, heartbeats, firmware info
+    ├── home/                 # Dashboard with cards
+    ├── navigation/           # NavRoutes, AppNavHost
+    ├── pid/                  # PID detail pages
+    ├── run/                  # Cockpit with recipe editor
+    ├── settings/             # Theme, time format, about
+    └── theme/                # Color, Type, Theme (always dark)
+```
+
+### Key Implementation Details
+
+#### Theme
+- Material 3 dark theme (always dark for HMI readability)
+- Semantic colors: Normal (green), Active (green), Warning (amber), Alarm (red), Stale (gray)
+- Tablet-optimized typography with adequate tap targets
+
+#### Components
+- **StatusStrip**: Global header showing connection status (green/yellow/red chip), MCU heartbeat age, machine state, alarm count
+- **LedIndicator**: LED with pulsing animation for active outputs, stale dimming for old data
+- **ServiceModeBanner**: Warning banner when service mode is active
+
+#### Screens
+| Screen | Purpose | Features |
+|--------|---------|----------|
+| Home | Dashboard | Run card, Temperatures card (3 PIDs), Status card, Diagnostics link, Settings link |
+| Run | Cockpit | Recipe editor (milling/hold/cycles), Start/Pause/Stop controls, PID tiles, Indicators |
+| Devices | BLE | Scan button, paired devices list (placeholder) |
+| PID Detail | Per-PID | PV/SV display, tuning inputs, output meter (placeholder) |
+| Alarms | List | Active/history toggle, alarm cards with severity, clear button |
+| Diagnostics | Debug | Connection state, heartbeat ages, firmware version, capabilities |
+| Settings | Config | Theme toggle, time format, export logs, about section |
+
+#### Navigation
+- Modal navigation drawer with persistent StatusStrip
+- Routes: Home, Run, Devices, PidDetail/{id}, Alarms, Diagnostics, Settings
+- Service mode toggle in drawer with warning color
+
+### Build Configuration
+- Gradle 8.9 with version catalog
+- AGP 8.7.3, Kotlin 2.0.21, Compose BOM 2024.12.01
+- Hilt 2.53.1 for dependency injection
+- minSdk 31 (Android 12), targetSdk 35 (Android 16)
+- BLE permissions: BLUETOOTH_SCAN (neverForLocation), BLUETOOTH_CONNECT
+
+### Files Created This Stage
+- Complete Android project (53 files, 5146 lines)
+- `.gitignore` with standard Android exclusions
+- Gradle wrapper and build configuration
+- All UI screens and components
+- Mock data repository
+
+### How to Test
+1. `./gradlew assembleDebug` — Build APK
+2. `./gradlew lintDebug` — Run lint checks
+3. Install on emulator: `./gradlew installDebug`
+4. Verify: Dark theme, all screens accessible via drawer, mock data displayed
+
+### Screenshot Verification
+Tested on Lenovo_Tab_Plus_11.5 emulator (2000×1200, Android 16):
+- Home screen: Cards layout, temperature display, status LEDs
+- Run screen: Recipe editor, controls, PID tiles, indicators
+
+### Next Steps (Stage 2)
+1. Implement BleManager with scan/connect/disconnect
+2. Create BleMachineRepository implementing MachineRepository interface
+3. Wire up GATT UUIDs and characteristic parsing
+4. Implement session/lease heartbeat (OPEN_SESSION, KEEPALIVE at 1Hz)
 
 ---
 
