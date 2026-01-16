@@ -1,13 +1,17 @@
 package com.shakercontrol.app.ui.components
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,7 +35,9 @@ fun StatusStrip(
     onMenuClick: () -> Unit,
     onConnectionClick: () -> Unit,
     onAlarmsClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    canNavigateBack: Boolean = false,
+    onBackClick: () -> Unit = {}
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -44,11 +50,21 @@ fun StatusStrip(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left: Menu + Title
+            // Left: Back/Menu + Title
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(0.25f)
             ) {
+                // Animated back button with subtle pulse when first shown
+                AnimatedVisibility(
+                    visible = canNavigateBack,
+                    enter = fadeIn() + slideInHorizontally(),
+                    exit = fadeOut() + slideOutHorizontally()
+                ) {
+                    BackButton(onClick = onBackClick)
+                }
+
+                // Menu button (always shown, shifts right when back is visible)
                 IconButton(onClick = onMenuClick) {
                     Icon(
                         imageVector = Icons.Default.Menu,
@@ -153,6 +169,54 @@ private fun ConnectionChip(
             { SignalBars(bars = signalQuality.bars, color = contentColor) }
         } else null
     )
+}
+
+/**
+ * Back button with subtle pulse animation on first appearance.
+ * The pulse draws attention without being intrusive.
+ */
+@Composable
+private fun BackButton(
+    onClick: () -> Unit
+) {
+    // Subtle pulse animation when button appears
+    val infiniteTransition = rememberInfiniteTransition(label = "backButtonPulse")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.6f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
+
+    // After 2 pulses (~3.2 seconds), stop the animation and stay at full opacity
+    var showPulse by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(3200)
+        showPulse = false
+    }
+
+    val displayAlpha = if (showPulse) alpha else 1f
+
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                MaterialTheme.colorScheme.primary.copy(alpha = displayAlpha * 0.15f)
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+            contentDescription = "Go back",
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = displayAlpha),
+            modifier = Modifier.size(24.dp)
+        )
+    }
 }
 
 /**

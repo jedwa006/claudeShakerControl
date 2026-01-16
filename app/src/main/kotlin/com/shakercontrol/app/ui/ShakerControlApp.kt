@@ -30,6 +30,9 @@ fun ShakerControlApp(
     val currentRoute = NavRoutes.fromRoute(currentBackStackEntry?.destination?.route)
     val screenTitle = currentRoute?.title ?: "Home"
 
+    // Check if we can navigate back (more than just the start destination on the stack)
+    val canNavigateBack = navController.previousBackStackEntry != null
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -63,13 +66,15 @@ fun ShakerControlApp(
                 .fillMaxSize()
                 .statusBarsPadding()
         ) {
-            // Global status strip
+            // Global status strip with back button when applicable
             StatusStrip(
                 screenTitle = screenTitle,
                 systemStatus = systemStatus,
                 onMenuClick = { scope.launch { drawerState.open() } },
                 onConnectionClick = { navController.navigate(NavRoutes.Devices.route) },
-                onAlarmsClick = { navController.navigate(NavRoutes.Alarms.route) }
+                onAlarmsClick = { navController.navigate(NavRoutes.Alarms.route) },
+                canNavigateBack = canNavigateBack,
+                onBackClick = { navController.popBackStack() }
             )
 
             // Service mode banner
