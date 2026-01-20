@@ -30,9 +30,20 @@ interface MachineRepository {
     val runProgress: StateFlow<RunProgress?>
 
     /**
-     * Current alarms.
+     * Current alarms (real-time from telemetry alarm_bits).
      */
     val alarms: StateFlow<List<Alarm>>
+
+    /**
+     * Alarm history - records all alarm transitions (set/clear).
+     * Used to track transient alarms that may clear before user notices.
+     */
+    val alarmHistory: StateFlow<List<AlarmHistoryEntry>>
+
+    /**
+     * Unacknowledged alarm bits - alarms that occurred but user hasn't dismissed.
+     */
+    val unacknowledgedAlarmBits: StateFlow<Int>
 
     /**
      * I/O status (digital inputs and relay outputs).
@@ -78,6 +89,17 @@ interface MachineRepository {
     // Alarm commands
     suspend fun acknowledgeAlarm(alarmId: String): Result<Unit>
     suspend fun clearLatchedAlarms(): Result<Unit>
+
+    /**
+     * Acknowledge unacknowledged alarm bits (dismiss from unacknowledged list).
+     * @param bits Bitmask of alarm bits to acknowledge
+     */
+    suspend fun acknowledgeAlarmBits(bits: Int)
+
+    /**
+     * Clear all alarm history entries.
+     */
+    suspend fun clearAlarmHistory()
 
     // I/O commands
     suspend fun setRelay(channel: Int, on: Boolean): Result<Unit>
@@ -139,4 +161,36 @@ interface MachineRepository {
      * @return Current timeout in minutes (0=disabled)
      */
     suspend fun getIdleTimeout(): Result<Int>
+
+    // ==========================================
+    // Safety Gate Commands (v0.4.0+)
+    // ==========================================
+
+    /**
+     * Get capability levels for all subsystems from the MCU.
+     * @return Map of subsystem ID to capability level (0=NOT_PRESENT, 1=OPTIONAL, 2=REQUIRED)
+     */
+    suspend fun getCapabilities(): Result<Map<Int, Int>>
+
+    /**
+     * Set capability level for a subsystem.
+     * @param subsystemId Subsystem ID (see SubsystemId constants)
+     * @param level Capability level (see CapabilityLevelCode constants)
+     * Note: E-Stop (ID 3) capability cannot be changed (always REQUIRED).
+     */
+    suspend fun setCapability(subsystemId: Int, level: Int): Result<Unit>
+
+    /**
+     * Get current safety gate states from the MCU.
+     * @return Pair of (enableMask, statusMask) - which gates are enabled and which are satisfied
+     */
+    suspend fun getSafetyGates(): Result<Pair<Int, Int>>
+
+    /**
+     * Enable or bypass a safety gate.
+     * @param gateId Gate ID (see SafetyGateId constants)
+     * @param enabled true=gate active (must be satisfied to start), false=bypassed
+     * Note: E-Stop gate (ID 0) cannot be bypassed.
+     */
+    suspend fun setSafetyGate(gateId: Int, enabled: Boolean): Result<Unit>
 }

@@ -35,6 +35,8 @@ fun DiagnosticsScreen(
     val pidData by viewModel.pidData.collectAsStateWithLifecycle()
     val isServiceMode by viewModel.isServiceMode.collectAsStateWithLifecycle()
     val hasOverrides by viewModel.hasCapabilityOverrides.collectAsStateWithLifecycle()
+    val safetyGates by viewModel.safetyGates.collectAsStateWithLifecycle()
+    val hasBypassedGates by viewModel.hasBypassedGates.collectAsStateWithLifecycle()
 
     DiagnosticsContent(
         systemStatus = systemStatus,
@@ -42,7 +44,10 @@ fun DiagnosticsScreen(
         isServiceMode = isServiceMode,
         hasCapabilityOverrides = hasOverrides,
         onCapabilityChange = { subsystem, level -> viewModel.setCapabilityOverride(subsystem, level) },
-        onClearOverrides = { viewModel.clearCapabilityOverrides() }
+        onClearOverrides = { viewModel.clearCapabilityOverrides() },
+        safetyGates = safetyGates,
+        hasBypassedGates = hasBypassedGates,
+        onGateToggle = { gateId -> viewModel.toggleSafetyGate(gateId) }
     )
 }
 
@@ -53,7 +58,10 @@ private fun DiagnosticsContent(
     isServiceMode: Boolean = false,
     hasCapabilityOverrides: Boolean = false,
     onCapabilityChange: (String, CapabilityLevel) -> Unit = { _, _ -> },
-    onClearOverrides: () -> Unit = {}
+    onClearOverrides: () -> Unit = {},
+    safetyGates: List<SafetyGateState> = emptyList(),
+    hasBypassedGates: Boolean = false,
+    onGateToggle: (Int) -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -91,6 +99,55 @@ private fun DiagnosticsContent(
                 DiagnosticRow("BLE link age", "${systemStatus.bleHeartbeatAgeMs} ms")
                 DiagnosticRow("MCU heartbeat age", "${systemStatus.mcuHeartbeatAgeMs} ms")
                 DiagnosticRow("MCU status", systemStatus.mcuHeartbeatStatus.displayName)
+            }
+        }
+
+        // Polling Status section
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "RS-485 Polling",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    // Status chip
+                    val (chipColor, chipText) = if (systemStatus.lazyPollActive) {
+                        StatusWarning to "SLOW"
+                    } else {
+                        StatusActive to "FAST"
+                    }
+                    Surface(
+                        color = chipColor.copy(alpha = 0.2f),
+                        shape = MaterialTheme.shapes.small
+                    ) {
+                        Text(
+                            text = chipText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = chipColor,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+
+                DiagnosticRow(
+                    "Polling mode",
+                    if (systemStatus.lazyPollActive) "Lazy (reduced rate)" else "Normal (10 Hz)"
+                )
+                DiagnosticRow(
+                    "Idle timeout",
+                    if (systemStatus.idleTimeoutMinutes > 0) {
+                        "${systemStatus.idleTimeoutMinutes} min"
+                    } else {
+                        "Disabled"
+                    }
+                )
             }
         }
 
@@ -197,6 +254,121 @@ private fun DiagnosticsContent(
                     }
                 }
             }
+        }
+
+        // Safety Gates section
+        if (safetyGates.isNotEmpty()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Safety Gates",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (hasBypassedGates) {
+                                Surface(
+                                    color = StatusAlarm.copy(alpha = 0.2f),
+                                    shape = MaterialTheme.shapes.small
+                                ) {
+                                    Text(
+                                        text = "BYPASSED",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = StatusAlarm,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            if (isServiceMode) {
+                                Text(
+                                    text = "Tap to toggle",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = StatusWarning
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    safetyGates.forEach { gate ->
+                        SafetyGateRow(
+                            gate = gate,
+                            isServiceMode = isServiceMode,
+                            onToggle = { onGateToggle(gate.id) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SafetyGateRow(
+    gate: SafetyGateState,
+    isServiceMode: Boolean,
+    onToggle: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Status indicator dot
+            val statusColor = when {
+                !gate.isEnabled -> Color.Gray  // Bypassed
+                gate.isSatisfied -> StatusActive  // Gate OK
+                else -> StatusAlarm  // Gate blocking
+            }
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(statusColor)
+            )
+
+            Text(
+                text = gate.name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // Gate status chip (clickable in service mode, except for E-Stop)
+        val canEdit = isServiceMode && gate.canBypass
+        val (chipColor, textColor, chipText) = when {
+            !gate.isEnabled -> Triple(Color.Gray, Color.White, "Bypassed")
+            gate.isSatisfied -> Triple(StatusActive, Color.Black, "OK")
+            else -> Triple(StatusAlarm, Color.White, "Blocking")
+        }
+
+        Surface(
+            onClick = { if (canEdit) onToggle() },
+            enabled = canEdit,
+            shape = MaterialTheme.shapes.small,
+            color = chipColor
+        ) {
+            Text(
+                text = chipText,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = textColor
+            )
         }
     }
 }
@@ -380,7 +552,9 @@ private fun DiagnosticsScreenPreview() {
                     rssiDbm = -58,
                     firmwareVersion = "0.2.0",
                     firmwareBuildId = "26011901",
-                    protocolVersion = 1
+                    protocolVersion = 1,
+                    lazyPollActive = false,
+                    idleTimeoutMinutes = 5
                 ),
                 pidData = listOf(
                     PidData(
@@ -423,7 +597,19 @@ private fun DiagnosticsScreenPreview() {
                         capabilityLevel = CapabilityLevel.REQUIRED
                     )
                 ),
-                isServiceMode = true
+                isServiceMode = true,
+                safetyGates = listOf(
+                    SafetyGateState(id = 0, name = "E-Stop", isEnabled = true, isSatisfied = true, canBypass = false),
+                    SafetyGateState(id = 1, name = "Door Interlock", isEnabled = true, isSatisfied = true, canBypass = true),
+                    SafetyGateState(id = 2, name = "HMI Connection", isEnabled = true, isSatisfied = true, canBypass = true),
+                    SafetyGateState(id = 3, name = "PID 1 Online", isEnabled = false, isSatisfied = false, canBypass = true),
+                    SafetyGateState(id = 4, name = "PID 2 Online", isEnabled = true, isSatisfied = true, canBypass = true),
+                    SafetyGateState(id = 5, name = "PID 3 Online", isEnabled = true, isSatisfied = true, canBypass = true),
+                    SafetyGateState(id = 6, name = "PID 1 Probe OK", isEnabled = true, isSatisfied = false, canBypass = true),
+                    SafetyGateState(id = 7, name = "PID 2 Probe OK", isEnabled = true, isSatisfied = true, canBypass = true),
+                    SafetyGateState(id = 8, name = "PID 3 Probe OK", isEnabled = true, isSatisfied = true, canBypass = true)
+                ),
+                hasBypassedGates = true
             )
         }
     }

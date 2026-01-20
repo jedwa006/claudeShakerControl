@@ -313,9 +313,14 @@ object CommandPayloadBuilder {
 object TelemetryParser {
     /**
      * Parse TELEMETRY_SNAPSHOT payload.
+     *
+     * Telemetry structure:
+     * - wire_telemetry_header_t (13 bytes): timestamp, di, ro, alarm, controller_count
+     * - controller_data (N × 10 bytes each)
+     * - wire_telemetry_run_state_t (16 bytes): machine_state, timing, lazy_poll, etc.
      */
     fun parse(payload: ByteArray): TelemetrySnapshot? {
-        if (payload.size < 13) return null // Minimum: timestamp + di + ro + alarm + count
+        if (payload.size < 13) return null // Minimum: header only
 
         val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
 
@@ -340,12 +345,37 @@ object TelemetryParser {
             )
         }
 
+        // Parse extended run state if present (16 bytes)
+        var runState: RunStateData? = null
+        if (buffer.remaining() >= 16) {
+            val machineState = buffer.get().toInt() and 0xFF
+            val runElapsedMs = buffer.int.toLong() and 0xFFFFFFFFL
+            val runRemainingMs = buffer.int.toLong() and 0xFFFFFFFFL
+            val targetTempX10 = buffer.short
+            val recipeStep = buffer.get().toInt() and 0xFF
+            val interlockBits = buffer.get().toInt() and 0xFF
+            val lazyPollActive = buffer.get().toInt() and 0xFF
+            val idleTimeoutMin = buffer.get().toInt() and 0xFF
+
+            runState = RunStateData(
+                machineState = machineState,
+                runElapsedMs = runElapsedMs,
+                runRemainingMs = runRemainingMs,
+                targetTempX10 = targetTempX10,
+                recipeStep = recipeStep,
+                interlockBits = interlockBits,
+                lazyPollActive = lazyPollActive != 0,
+                idleTimeoutMin = idleTimeoutMin
+            )
+        }
+
         return TelemetrySnapshot(
             timestampMs = timestampMs,
             diBits = diBits,
             roBits = roBits,
             alarmBits = alarmBits,
-            controllers = controllers
+            controllers = controllers,
+            runState = runState
         )
     }
 
@@ -354,8 +384,25 @@ object TelemetryParser {
         val diBits: Int,
         val roBits: Int,
         val alarmBits: Long,
-        val controllers: List<ControllerData>
+        val controllers: List<ControllerData>,
+        val runState: RunStateData? = null
     )
+
+    /**
+     * Extended run state data from wire_telemetry_run_state_t (16 bytes)
+     */
+    data class RunStateData(
+        val machineState: Int,
+        val runElapsedMs: Long,
+        val runRemainingMs: Long,
+        val targetTempX10: Short,
+        val recipeStep: Int,
+        val interlockBits: Int,
+        val lazyPollActive: Boolean,
+        val idleTimeoutMin: Int
+    ) {
+        val targetTemp: Float get() = targetTempX10 / 10f
+    }
 
     data class ControllerData(
         val controllerId: Int,

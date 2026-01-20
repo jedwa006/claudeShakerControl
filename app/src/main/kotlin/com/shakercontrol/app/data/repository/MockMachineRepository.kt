@@ -38,6 +38,12 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
     private val _alarms = MutableStateFlow(createMockAlarms())
     override val alarms: StateFlow<List<Alarm>> = _alarms.asStateFlow()
 
+    private val _alarmHistory = MutableStateFlow<List<AlarmHistoryEntry>>(emptyList())
+    override val alarmHistory: StateFlow<List<AlarmHistoryEntry>> = _alarmHistory.asStateFlow()
+
+    private val _unacknowledgedAlarmBits = MutableStateFlow(0)
+    override val unacknowledgedAlarmBits: StateFlow<Int> = _unacknowledgedAlarmBits.asStateFlow()
+
     private val _ioStatus = MutableStateFlow(IoStatus(digitalInputs = 0b00000101, relayOutputs = 0b00000001))
     override val ioStatus: StateFlow<IoStatus> = _ioStatus.asStateFlow()
 
@@ -494,6 +500,15 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
         return Result.success(Unit)
     }
 
+    override suspend fun acknowledgeAlarmBits(bits: Int) {
+        _unacknowledgedAlarmBits.value = _unacknowledgedAlarmBits.value and bits.inv()
+    }
+
+    override suspend fun clearAlarmHistory() {
+        _alarmHistory.value = emptyList()
+        _unacknowledgedAlarmBits.value = 0
+    }
+
     override suspend fun setRelay(channel: Int, on: Boolean): Result<Unit> {
         if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
             return Result.failure(IllegalStateException("Not connected"))
@@ -616,5 +631,74 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
     override suspend fun getIdleTimeout(): Result<Int> {
         delay(50) // Simulate command delay
         return Result.success(mockIdleTimeout)
+    }
+
+    // ==========================================
+    // Safety Gate Commands (Mock Implementation)
+    // ==========================================
+
+    // Mock storage for capabilities and safety gates
+    private val mockCapabilities = mutableMapOf(
+        0 to 1,  // PID1 = OPTIONAL
+        1 to 2,  // PID2 = REQUIRED
+        2 to 2,  // PID3 = REQUIRED
+        3 to 2,  // E-Stop = REQUIRED (immutable)
+        4 to 2,  // Door = REQUIRED
+        5 to 1,  // LN2 = OPTIONAL
+        6 to 2   // Motor = REQUIRED
+    )
+
+    private var mockGateEnableMask = 0x01FF  // All gates enabled by default
+    private var mockGateStatusMask = 0x01FF  // All gates satisfied by default
+
+    override suspend fun getCapabilities(): Result<Map<Int, Int>> {
+        delay(50) // Simulate command delay
+        return Result.success(mockCapabilities.toMap())
+    }
+
+    override suspend fun setCapability(subsystemId: Int, level: Int): Result<Unit> {
+        delay(50) // Simulate command delay
+
+        // E-Stop capability cannot be changed
+        if (subsystemId == 3) {
+            return Result.failure(IllegalArgumentException("E-Stop capability cannot be changed"))
+        }
+
+        if (subsystemId !in 0..6) {
+            return Result.failure(IllegalArgumentException("Invalid subsystem ID: $subsystemId"))
+        }
+
+        if (level !in 0..2) {
+            return Result.failure(IllegalArgumentException("Invalid capability level: $level"))
+        }
+
+        mockCapabilities[subsystemId] = level
+        return Result.success(Unit)
+    }
+
+    override suspend fun getSafetyGates(): Result<Pair<Int, Int>> {
+        delay(50) // Simulate command delay
+        return Result.success(Pair(mockGateEnableMask, mockGateStatusMask))
+    }
+
+    override suspend fun setSafetyGate(gateId: Int, enabled: Boolean): Result<Unit> {
+        delay(50) // Simulate command delay
+
+        // E-Stop gate cannot be bypassed
+        if (gateId == 0 && !enabled) {
+            return Result.failure(IllegalArgumentException("E-Stop gate cannot be bypassed"))
+        }
+
+        if (gateId !in 0..8) {
+            return Result.failure(IllegalArgumentException("Invalid gate ID: $gateId"))
+        }
+
+        mockGateEnableMask = if (enabled) {
+            mockGateEnableMask or (1 shl gateId)
+        } else {
+            mockGateEnableMask and (1 shl gateId).inv()
+        }
+
+        return Result.success(Unit)
     }
 }

@@ -74,9 +74,20 @@ object CommandId {
     const val WRITE_REGISTER: Short = 0x0031
     const val WRITE_REGISTERS: Short = 0x0032
 
-    // Configuration commands
-    const val SET_IDLE_TIMEOUT: Short = 0x0040
-    const val GET_IDLE_TIMEOUT: Short = 0x0041
+    // Lazy polling configuration
+    // Firmware v0.3.7 uses 0x0060/0x0061 with 2-byte payload [enable, timeout_min]
+    // Fallback to 0x0040/0x0041 with 1-byte payload if needed
+    const val SET_LAZY_POLL: Short = 0x0060
+    const val GET_LAZY_POLL: Short = 0x0061
+    // Legacy commands (pre-v0.3.7)
+    const val SET_IDLE_TIMEOUT_LEGACY: Short = 0x0040
+    const val GET_IDLE_TIMEOUT_LEGACY: Short = 0x0041
+
+    // Safety gate commands (v0.4.0+)
+    const val GET_CAPABILITIES: Short = 0x0070
+    const val SET_CAPABILITY: Short = 0x0071
+    const val GET_SAFETY_GATES: Short = 0x0072
+    const val SET_SAFETY_GATE: Short = 0x0073
 
     // Maintenance / diagnostics
     const val REQUEST_SNAPSHOT_NOW: Short = 0x00F0.toShort()
@@ -205,6 +216,7 @@ enum class ControllerMode(val code: Byte) {
  * Alarm bits (alarm_bits u32) - see docs/MCU_docs/90-command-catalog.md section 7.
  */
 object AlarmBits {
+    // Original bits (0-8)
     const val ESTOP_ACTIVE = 1 shl 0
     const val DOOR_INTERLOCK_OPEN = 1 shl 1
     const val OVER_TEMP = 1 shl 2
@@ -214,6 +226,18 @@ object AlarmBits {
     const val PID1_FAULT = 1 shl 6
     const val PID2_FAULT = 1 shl 7
     const val PID3_FAULT = 1 shl 8
+
+    // New bits (9-14) - Safety gate bypasses and probe errors (v0.4.0+)
+    const val GATE_DOOR_BYPASSED = 1 shl 9
+    const val GATE_HMI_BYPASSED = 1 shl 10
+    const val GATE_PID_BYPASSED = 1 shl 11
+    const val PID1_PROBE_ERROR = 1 shl 12
+    const val PID2_PROBE_ERROR = 1 shl 13
+    const val PID3_PROBE_ERROR = 1 shl 14
+
+    // Convenience masks
+    const val ANY_GATE_BYPASSED = GATE_DOOR_BYPASSED or GATE_HMI_BYPASSED or GATE_PID_BYPASSED
+    const val ANY_PROBE_ERROR = PID1_PROBE_ERROR or PID2_PROBE_ERROR or PID3_PROBE_ERROR
 }
 
 /**
@@ -284,4 +308,69 @@ data class DeviceInfo(
             )
         }
     }
+}
+
+/**
+ * Subsystem IDs for capability configuration.
+ * Used with CMD_SET_CAPABILITY (0x0071).
+ */
+object SubsystemId {
+    const val PID1: Byte = 0          // LN2 Cold
+    const val PID2: Byte = 1          // Axle bearings
+    const val PID3: Byte = 2          // Orbital bearings
+    const val ESTOP: Byte = 3         // E-Stop (immutable - always REQUIRED)
+    const val DOOR: Byte = 4          // Door interlock
+    const val LN2: Byte = 5           // LN2 presence sensor
+    const val MOTOR: Byte = 6         // Motor subsystem
+}
+
+/**
+ * Capability levels for subsystems.
+ * Used with CMD_SET_CAPABILITY (0x0071).
+ */
+object CapabilityLevelCode {
+    const val NOT_PRESENT: Byte = 0   // Subsystem not installed
+    const val OPTIONAL: Byte = 1      // Subsystem optional for start
+    const val REQUIRED: Byte = 2      // Subsystem required for start
+}
+
+/**
+ * Safety gate IDs for gate control.
+ * Used with CMD_SET_SAFETY_GATE (0x0073).
+ */
+object SafetyGateId {
+    const val ESTOP: Byte = 0         // E-Stop gate (CANNOT be bypassed)
+    const val DOOR: Byte = 1          // Door interlock gate
+    const val HMI: Byte = 2           // HMI connection gate
+    const val PID1_ONLINE: Byte = 3   // PID1 online gate
+    const val PID2_ONLINE: Byte = 4   // PID2 online gate
+    const val PID3_ONLINE: Byte = 5   // PID3 online gate
+    const val PID1_NO_PROBE_ERR: Byte = 6  // PID1 no probe error gate
+    const val PID2_NO_PROBE_ERR: Byte = 7  // PID2 no probe error gate
+    const val PID3_NO_PROBE_ERR: Byte = 8  // PID3 no probe error gate
+}
+
+/**
+ * Relay output channel assignments.
+ * Maps physical relay channels to their functions.
+ */
+object RelayChannel {
+    const val MOTOR_CONTACTOR = 1     // CH1 = Motor contactor (state machine controlled)
+    const val SOFT_START = 2          // CH2 = Soft starter START (state machine controlled)
+    const val HEATER_1 = 3            // CH3 = Heater 1 / Axle (PID2 controlled)
+    const val HEATER_2 = 4            // CH4 = Heater 2 / Orbital (PID3 controlled)
+    const val LN2_VALVE = 5           // CH5 = LN2 solenoid valve (PID1 controlled / chilldown)
+    const val DOOR_LOCK = 6           // CH6 = Door lock solenoid
+    const val CHAMBER_LIGHT = 7       // CH7 = Chamber light
+    // CH8 = Reserved
+}
+
+/**
+ * Digital input channel assignments.
+ * Maps physical DI channels to their functions.
+ */
+object DigitalInputChannel {
+    const val ESTOP = 1               // DI1 = E-Stop (LOW = active)
+    const val DOOR_CLOSED = 2         // DI2 = Door closed sensor (HIGH = closed)
+    const val LN2_PRESENT = 3         // DI3 = LN2 present sensor (HIGH = present)
 }

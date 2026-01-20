@@ -42,9 +42,14 @@ fun RecipeSection(
     isRunning: Boolean,
     interlockStatus: InterlockStatus,
     isServiceMode: Boolean,
+    isConnected: Boolean = false,
+    isLightOn: Boolean = false,
+    isDoorLocked: Boolean = false,
     areHeatersEnabled: Boolean = false,
     isCoolingEnabled: Boolean = false,
     onRecipeChange: (Recipe) -> Unit,
+    onToggleLight: () -> Unit = {},
+    onToggleDoor: () -> Unit = {},
     onToggleHeaters: () -> Unit = {},
     onToggleCooling: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -71,8 +76,13 @@ fun RecipeSection(
                 Spacer(modifier = Modifier.height(8.dp))
                 ControlsRow(
                     isServiceMode = isServiceMode,
+                    isLightOn = isLightOn,
+                    isDoorLocked = isDoorLocked,
+                    isConnected = isConnected,
                     areHeatersEnabled = areHeatersEnabled,
                     isCoolingEnabled = isCoolingEnabled,
+                    onToggleLight = onToggleLight,
+                    onToggleDoor = onToggleDoor,
                     onToggleHeaters = onToggleHeaters,
                     onToggleCooling = onToggleCooling
                 )
@@ -200,12 +210,20 @@ private fun SectionDivider() {
 /**
  * Controls row with Lights, Door, and service-mode controls.
  * These are locked/hidden when a run is in progress.
+ *
+ * Light relay: CH7 (chamber lighting)
+ * Door lock relay: CH6 (solenoid locking bar)
  */
 @Composable
 private fun ControlsRow(
     isServiceMode: Boolean,
+    isLightOn: Boolean = false,
+    isDoorLocked: Boolean = false,
+    isConnected: Boolean = false,
     areHeatersEnabled: Boolean = false,
     isCoolingEnabled: Boolean = false,
+    onToggleLight: () -> Unit = {},
+    onToggleDoor: () -> Unit = {},
     onToggleHeaters: () -> Unit = {},
     onToggleCooling: () -> Unit = {}
 ) {
@@ -225,11 +243,17 @@ private fun ControlsRow(
 
         ReadinessToggleButton(
             label = "Lights",
-            icon = Icons.Default.Lightbulb
+            icon = Icons.Default.Lightbulb,
+            isOn = isLightOn,
+            onToggle = onToggleLight,
+            enabled = isConnected
         )
         ReadinessToggleButton(
             label = "Door",
-            icon = Icons.Default.Lock
+            icon = if (isDoorLocked) Icons.Default.Lock else Icons.Default.LockOpen,
+            isOn = isDoorLocked,
+            onToggle = onToggleDoor,
+            enabled = isConnected
         )
 
         // Service mode controls - Heat and Cool buttons for PID control
@@ -351,32 +375,39 @@ private fun ReadinessIndicator(
 }
 
 /**
- * Compact toggle button for readiness panel.
- * @param compact If true, shows icon only (for space-constrained service mode controls)
+ * Toggle button for relay controls (Lights, Door).
+ * @param isOn Current state of the relay
+ * @param onToggle Callback when button is clicked
+ * @param enabled Whether the button is enabled (e.g., when connected)
+ * @param compact If true, shows icon only (for space-constrained layouts)
  */
 @Composable
 private fun ReadinessToggleButton(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isOn: Boolean,
+    onToggle: () -> Unit,
+    enabled: Boolean = true,
     warningColor: Boolean = false,
     compact: Boolean = false
 ) {
-    var isOn by remember { mutableStateOf(false) }
-
     val backgroundColor = when {
+        !enabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         isOn && warningColor -> SemanticColors.Warning.copy(alpha = 0.3f)
         isOn -> SemanticColors.Normal.copy(alpha = 0.3f)
         else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     }
 
     val contentColor = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
         isOn && warningColor -> SemanticColors.Warning
         isOn -> SemanticColors.Normal
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
     Surface(
-        onClick = { isOn = !isOn },
+        onClick = onToggle,
+        enabled = enabled,
         color = backgroundColor,
         shape = MaterialTheme.shapes.small
     ) {
@@ -767,8 +798,15 @@ private fun RunProgressDisplay(runProgress: RunProgress) {
 }
 
 /**
- * Big control buttons section.
+ * Big control buttons section with Chilldown and Start controls.
  * Spec: docs/dashboard-sec-v1.md section 5.1 B and docs/ui-copy-labels-v1.md section 3.3
+ *
+ * Layout when not running:
+ * ┌──────────────────────────────────────┐
+ * │  [Chilldown] [✓ Start after chill]   │
+ * ├──────────────────────────────────────┤
+ * │            [  START  ]               │
+ * └──────────────────────────────────────┘
  */
 @Composable
 fun ControlsSection(
@@ -776,10 +814,15 @@ fun ControlsSection(
     connectionState: ConnectionState,
     isExecutingCommand: Boolean = false,
     startGating: StartGatingResult = StartGatingResult.OK,
+    isChilldownActive: Boolean = false,
+    isStartAfterChillEnabled: Boolean = false,
+    canChilldown: Boolean = false,
     onStart: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
+    onChilldown: () -> Unit = {},
+    onToggleStartAfterChill: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Use startGating for Start button, other buttons use simple state checks
@@ -814,6 +857,18 @@ fun ControlsSection(
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
+
+            // Chilldown row (only shown when not running)
+            if (!machineState.isOperating) {
+                ChilldownRow(
+                    isChilldownActive = isChilldownActive,
+                    isStartAfterChillEnabled = isStartAfterChillEnabled,
+                    canChilldown = canChilldown && !isExecutingCommand,
+                    onChilldown = onChilldown,
+                    onToggleStartAfterChill = onToggleStartAfterChill
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -913,6 +968,102 @@ fun ControlsSection(
 }
 
 /**
+ * Chilldown row with button and "Start after chill" checkbox.
+ * Used to pre-cool the chamber with LN2 before starting a run.
+ */
+@Composable
+private fun ChilldownRow(
+    isChilldownActive: Boolean,
+    isStartAfterChillEnabled: Boolean,
+    canChilldown: Boolean,
+    onChilldown: () -> Unit,
+    onToggleStartAfterChill: (Boolean) -> Unit
+) {
+    // Pulsing animation when chilldown is active
+    val infiniteTransition = rememberInfiniteTransition(label = "chilldown_pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = if (isChilldownActive) 0.5f else 1f,
+        targetValue = if (isChilldownActive) 1f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "chilldown_alpha"
+    )
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Chilldown button
+        OutlinedButton(
+            onClick = onChilldown,
+            enabled = canChilldown && !isChilldownActive,
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = if (isChilldownActive) {
+                    SemanticColors.Active.copy(alpha = pulseAlpha * 0.2f)
+                } else {
+                    Color.Transparent
+                }
+            ),
+            modifier = Modifier.height(40.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.AcUnit,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = if (isChilldownActive) SemanticColors.Active else LocalContentColor.current
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = if (isChilldownActive) "Chilling..." else "Chilldown",
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+
+        // Start after chill checkbox
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.clickable { onToggleStartAfterChill(!isStartAfterChillEnabled) }
+        ) {
+            Checkbox(
+                checked = isStartAfterChillEnabled,
+                onCheckedChange = onToggleStartAfterChill,
+                enabled = !isChilldownActive
+            )
+            Text(
+                text = "Start after chill",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isChilldownActive) {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
+            )
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Status badge when chilling
+        if (isChilldownActive) {
+            Surface(
+                color = SemanticColors.Active.copy(alpha = 0.2f),
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(
+                    text = "Pre-cooling",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SemanticColors.Active,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
  * Compact PID tiles section with responsive grid layout.
  * Shows 1/2/3 columns based on controller count for optimal space usage.
  * Dynamically shows only controllers that are connected via RS-485.
@@ -921,6 +1072,7 @@ fun ControlsSection(
 fun TemperaturesSection(
     pidData: List<PidData>,
     onNavigateToPid: (Int) -> Unit,
+    onWakeFromLazy: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Filter to only show controllers that have capability level > NOT_PRESENT
@@ -966,6 +1118,7 @@ fun TemperaturesSection(
                     CompactPidTile(
                         pid = pid,
                         onClick = { onNavigateToPid(pid.controllerId) },
+                        onWakeFromLazy = onWakeFromLazy,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -977,50 +1130,81 @@ fun TemperaturesSection(
 /**
  * Compact stamp-style PID tile for grid layout.
  * Shows essential info: name, PV/SV, and compact status indicators.
+ *
+ * Visual states:
+ * - Error (offline/probe error): Red pulsing border
+ * - Warning (stale): Yellow static border
+ * - Lazy mode: Yellow breathing border (slower pulse)
+ * - Normal: No border
  */
 @Composable
 private fun CompactPidTile(
     pid: PidData,
     onClick: () -> Unit,
+    onWakeFromLazy: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     // Pulsing border for error states
     val hasError = pid.isOffline || pid.hasProbeError
     val hasWarning = pid.isStale && !hasError
+    val isLazyMode = pid.lazyPollActive && !hasError && !hasWarning
 
     val infiniteTransition = rememberInfiniteTransition(label = "error_pulse")
-    val borderAlpha by infiniteTransition.animateFloat(
-        initialValue = if (hasError) 1f else 0.5f,
-        targetValue = if (hasError) 0.3f else 0.5f,
+
+    // Red pulsing for errors (fast pulse)
+    val errorBorderAlpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.3f,
         animationSpec = infiniteRepeatable(
             animation = tween(800, easing = EaseInOut),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "border_alpha"
+        label = "error_border_alpha"
+    )
+
+    // Yellow breathing for lazy mode (slower, gentler pulse)
+    val lazyBorderAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.7f,
+        targetValue = 0.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "lazy_border_alpha"
     )
 
     val borderColor = when {
-        hasError -> SemanticColors.Alarm.copy(alpha = borderAlpha)
+        hasError -> SemanticColors.Alarm.copy(alpha = errorBorderAlpha)
         hasWarning -> SemanticColors.Warning.copy(alpha = 0.7f)
+        isLazyMode -> SemanticColors.Warning.copy(alpha = lazyBorderAlpha)
         else -> Color.Transparent
     }
 
-    val borderWidth = if (hasError || hasWarning) 2.dp else 0.dp
+    val borderWidth = if (hasError || hasWarning || isLazyMode) 2.dp else 0.dp
+
+    // Tap behavior: navigate to PID detail, but also wake from lazy mode
+    val handleClick = {
+        if (isLazyMode) {
+            onWakeFromLazy()
+        }
+        onClick()
+    }
 
     Card(
         modifier = modifier
             .then(
-                if (hasError || hasWarning) {
+                if (hasError || hasWarning || isLazyMode) {
                     Modifier.border(borderWidth, borderColor, MaterialTheme.shapes.medium)
                 } else {
                     Modifier
                 }
             )
-            .clickable(onClick = onClick),
+            .clickable(onClick = handleClick),
         colors = CardDefaults.cardColors(
             containerColor = when {
                 hasError -> SemanticColors.Alarm.copy(alpha = 0.1f)
                 hasWarning -> SemanticColors.Warning.copy(alpha = 0.1f)
+                isLazyMode -> SemanticColors.Warning.copy(alpha = 0.05f)
                 else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
             }
         )

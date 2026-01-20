@@ -13,6 +13,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shakercontrol.app.domain.model.Alarm
+import com.shakercontrol.app.domain.model.AlarmHistoryEntry
+import com.shakercontrol.app.domain.model.AlarmHistorySource
 import com.shakercontrol.app.domain.model.AlarmSeverity
 import com.shakercontrol.app.domain.model.AlarmSource
 import com.shakercontrol.app.domain.model.AlarmState
@@ -33,6 +35,7 @@ fun AlarmsScreen(
     viewModel: AlarmsViewModel = hiltViewModel()
 ) {
     val alarms by viewModel.alarms.collectAsStateWithLifecycle()
+    val alarmHistory by viewModel.alarmHistory.collectAsStateWithLifecycle()
     val isConnected by viewModel.isConnected.collectAsStateWithLifecycle()
     val isExecutingCommand by viewModel.isExecutingCommand.collectAsStateWithLifecycle()
 
@@ -57,6 +60,7 @@ fun AlarmsScreen(
 
     AlarmsContent(
         alarms = alarms,
+        alarmHistory = alarmHistory,
         isConnected = isConnected,
         isExecutingCommand = isExecutingCommand,
         snackbarHostState = snackbarHostState,
@@ -68,6 +72,7 @@ fun AlarmsScreen(
 @Composable
 private fun AlarmsContent(
     alarms: List<Alarm>,
+    alarmHistory: List<AlarmHistoryEntry> = emptyList(),
     isConnected: Boolean = false,
     isExecutingCommand: Boolean = false,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
@@ -75,7 +80,7 @@ private fun AlarmsContent(
     onClearLatched: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Active", "History")
+    val tabs = listOf("Active", "All", "Transitions")
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -122,32 +127,50 @@ private fun AlarmsContent(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    val filteredAlarms = when (selectedTab) {
-                        0 -> alarms.filter { it.state == AlarmState.ACTIVE }
-                        else -> alarms
-                    }
-
-                    if (filteredAlarms.isEmpty()) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "No alarms.",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    when (selectedTab) {
+                        0 -> {
+                            // Active alarms
+                            val activeAlarms = alarms.filter { it.state == AlarmState.ACTIVE }
+                            if (activeAlarms.isEmpty()) {
+                                EmptyAlarmsMessage("No active alarms.")
+                            } else {
+                                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(activeAlarms) { alarm ->
+                                        AlarmRow(
+                                            alarm = alarm,
+                                            canAcknowledge = isConnected && !isExecutingCommand,
+                                            onAcknowledge = { onAcknowledge(alarm.id) }
+                                        )
+                                    }
+                                }
+                            }
                         }
-                    } else {
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(filteredAlarms) { alarm ->
-                                AlarmRow(
-                                    alarm = alarm,
-                                    canAcknowledge = isConnected && !isExecutingCommand,
-                                    onAcknowledge = { onAcknowledge(alarm.id) }
-                                )
+                        1 -> {
+                            // All alarms (active + cleared)
+                            if (alarms.isEmpty()) {
+                                EmptyAlarmsMessage("No alarms.")
+                            } else {
+                                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(alarms) { alarm ->
+                                        AlarmRow(
+                                            alarm = alarm,
+                                            canAcknowledge = isConnected && !isExecutingCommand,
+                                            onAcknowledge = { onAcknowledge(alarm.id) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        2 -> {
+                            // Transitions history - shows every alarm assertion/clearance
+                            if (alarmHistory.isEmpty()) {
+                                EmptyAlarmsMessage("No alarm transitions recorded.")
+                            } else {
+                                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(alarmHistory) { entry ->
+                                        AlarmTransitionRow(entry = entry)
+                                    }
+                                }
                             }
                         }
                     }
@@ -240,6 +263,105 @@ private fun AlarmRow(
                     ) {
                         Text("Acknowledge", style = MaterialTheme.typography.labelSmall)
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyAlarmsMessage(text: String) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/**
+ * Displays a single alarm transition event (asserted or cleared).
+ */
+@Composable
+private fun AlarmTransitionRow(entry: AlarmHistoryEntry) {
+    val severityColor = when (entry.severity) {
+        AlarmSeverity.CRITICAL -> SemanticColors.Critical
+        AlarmSeverity.ALARM -> SemanticColors.Alarm
+        AlarmSeverity.WARNING -> SemanticColors.Warning
+        AlarmSeverity.INFO -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    val transitionColor = if (entry.wasAsserted) {
+        SemanticColors.Alarm  // Red for asserted
+    } else {
+        SemanticColors.Normal  // Green for cleared
+    }
+
+    val formatter = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
+        .withZone(ZoneId.systemDefault())
+
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = severityColor.copy(alpha = 0.05f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Transition badge (ASSERTED / CLEARED)
+                Surface(
+                    color = transitionColor.copy(alpha = 0.2f),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = entry.transitionText,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = transitionColor,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+
+                Column {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = entry.alarmName,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        // Show source badge for app-detected alarms
+                        if (entry.source == AlarmHistorySource.APP_PROBE_ERROR) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                shape = MaterialTheme.shapes.extraSmall
+                            ) {
+                                Text(
+                                    text = "App",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        text = "${entry.severity.displayName} • ${formatter.format(entry.timestamp)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

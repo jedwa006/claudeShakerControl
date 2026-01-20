@@ -22,6 +22,14 @@ sealed class DeepLinkAction {
     data object Connect : DeepLinkAction()
     data object Disconnect : DeepLinkAction()
     data object Reconnect : DeepLinkAction()
+
+    // Test actions for automated testing
+    data class SetRelay(val channel: Int, val on: Boolean) : DeepLinkAction()
+    data class SetCapability(val subsystemId: Int, val level: Int) : DeepLinkAction()
+    data class SetSafetyGate(val gateId: Int, val enabled: Boolean) : DeepLinkAction()
+    data object ToggleLight : DeepLinkAction()
+    data object ToggleDoor : DeepLinkAction()
+    data object StartChilldown : DeepLinkAction()
 }
 
 /**
@@ -73,6 +81,14 @@ class MainActivity : ComponentActivity() {
      * - shaker://action/connect (navigates to Devices)
      * - shaker://action/disconnect
      * - shaker://action/reconnect
+     *
+     * Test actions (for automated testing):
+     * - shaker://test/relay/{channel}/{state} - Set relay (channel 1-8, state 0/1)
+     * - shaker://test/capability/{subsystem}/{level} - Set capability (subsystem 0-6, level 0-2)
+     * - shaker://test/gate/{gateId}/{enabled} - Set safety gate (gateId 0-8, enabled 0/1)
+     * - shaker://test/light - Toggle chamber light
+     * - shaker://test/door - Toggle door lock
+     * - shaker://test/chilldown - Start chilldown
      */
     private fun parseDeepLink(intent: Intent?): DeepLinkResult {
         val uri = intent?.data ?: return DeepLinkResult()
@@ -96,6 +112,31 @@ class MainActivity : ComponentActivity() {
                     pathSegments.getOrNull(0) == "connect" -> DeepLinkAction.Connect
                     pathSegments.getOrNull(0) == "disconnect" -> DeepLinkAction.Disconnect
                     pathSegments.getOrNull(0) == "reconnect" -> DeepLinkAction.Reconnect
+                    else -> null
+                }
+                DeepLinkResult(action = action)
+            }
+            "test" -> {
+                // Test action deep links (for automated testing)
+                val action = when (pathSegments.getOrNull(0)) {
+                    "relay" -> {
+                        val channel = pathSegments.getOrNull(1)?.toIntOrNull() ?: return DeepLinkResult()
+                        val state = pathSegments.getOrNull(2)?.toIntOrNull() ?: return DeepLinkResult()
+                        DeepLinkAction.SetRelay(channel, state == 1)
+                    }
+                    "capability" -> {
+                        val subsystem = pathSegments.getOrNull(1)?.toIntOrNull() ?: return DeepLinkResult()
+                        val level = pathSegments.getOrNull(2)?.toIntOrNull() ?: return DeepLinkResult()
+                        DeepLinkAction.SetCapability(subsystem, level)
+                    }
+                    "gate" -> {
+                        val gateId = pathSegments.getOrNull(1)?.toIntOrNull() ?: return DeepLinkResult()
+                        val enabled = pathSegments.getOrNull(2)?.toIntOrNull() ?: return DeepLinkResult()
+                        DeepLinkAction.SetSafetyGate(gateId, enabled == 1)
+                    }
+                    "light" -> DeepLinkAction.ToggleLight
+                    "door" -> DeepLinkAction.ToggleDoor
+                    "chilldown" -> DeepLinkAction.StartChilldown
                     else -> null
                 }
                 DeepLinkResult(action = action)

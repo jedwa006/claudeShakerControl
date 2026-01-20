@@ -112,6 +112,15 @@ class BleMachineRepository @Inject constructor(
     override val ioStatus: StateFlow<IoStatus> = _ioStatus.asStateFlow()
     override val interlockStatus: StateFlow<InterlockStatus> = _interlockStatus.asStateFlow()
 
+    // Alarm history tracking
+    private val _alarmHistory = MutableStateFlow<List<AlarmHistoryEntry>>(emptyList())
+    override val alarmHistory: StateFlow<List<AlarmHistoryEntry>> = _alarmHistory.asStateFlow()
+    private val _unacknowledgedAlarmBits = MutableStateFlow(0)
+    override val unacknowledgedAlarmBits: StateFlow<Int> = _unacknowledgedAlarmBits.asStateFlow()
+    private var previousAlarmBits: Long = 0L
+    // Track previous probe error states per controller (controllerId -> ProbeError)
+    private val previousProbeErrors = mutableMapOf<Int, ProbeError>()
+
     // Simulation mode (for testing DI in service mode)
     private val _isSimulationEnabled = MutableStateFlow(false)
     override val isSimulationEnabled: StateFlow<Boolean> = _isSimulationEnabled.asStateFlow()
@@ -233,28 +242,11 @@ class BleMachineRepository @Inject constructor(
                 Log.w(TAG, ">>> Session opened: id=${sessionData.sessionId}, lease=${sessionData.leaseMs}ms")
                 startHeartbeat()
                 startRssiPolling()
-                syncIdleTimeoutFromMcu()
+                // Query MCU's current idle timeout on connect (MCU is source of truth)
+                queryMcuIdleTimeout()
             }
         } else {
             Log.e(TAG, ">>> Failed to open session: ${ack?.status}, detail=${ack?.detail}")
-        }
-    }
-
-    /**
-     * Sync idle timeout value from MCU after session is established.
-     * This ensures the app displays the actual MCU value.
-     */
-    private fun syncIdleTimeoutFromMcu() {
-        scope.launch {
-            delay(300) // Let session stabilize
-            val result = getIdleTimeout()
-            if (result.isSuccess) {
-                val minutes = result.getOrThrow()
-                Log.w(TAG, ">>> Synced idle timeout from MCU: $minutes minutes")
-                _mcuIdleTimeoutMinutes.value = minutes
-            } else {
-                Log.e(TAG, ">>> Failed to sync idle timeout from MCU: ${result.exceptionOrNull()?.message}")
-            }
         }
     }
 
@@ -277,6 +269,9 @@ class BleMachineRepository @Inject constructor(
         lastKeepaliveTime = 0L
         rssiHistory.clear()
         _mcuIdleTimeoutMinutes.value = null // Clear synced value on disconnect
+        // Reset alarm tracking state (but keep history)
+        previousAlarmBits = 0L
+        previousProbeErrors.clear()
     }
 
     private fun startHeartbeat() {
@@ -301,6 +296,30 @@ class BleMachineRepository @Inject constructor(
         val now = System.currentTimeMillis()
         lastBleHeartbeatTime = now
         lastKeepaliveTime = now
+    }
+
+    /**
+     * Query the MCU's current lazy polling setting.
+     * MCU is the source of truth - this is called on connect to sync the app's display.
+     * Uses CMD_GET_LAZY_POLL (0x0061) which returns [enabled, timeout_min].
+     */
+    private fun queryMcuIdleTimeout() {
+        scope.launch {
+            val result = getIdleTimeout()
+            result.onSuccess { minutes ->
+                Log.d(TAG, "MCU lazy poll queried: timeout=$minutes minutes (0=disabled)")
+                _mcuIdleTimeoutMinutes.value = minutes
+                // Also update SystemStatus so Diagnostics shows correct value immediately
+                val currentStatus = _systemStatus.value
+                _systemStatus.value = currentStatus.copy(
+                    idleTimeoutMinutes = minutes,
+                    lazyPollActive = false // Reset to false on connect, MCU will report actual state via telemetry
+                )
+            }
+            result.onFailure { e ->
+                Log.w(TAG, "Failed to query MCU lazy poll settings: ${e.message}")
+            }
+        }
     }
 
     private fun startRunTimer() {
@@ -411,6 +430,11 @@ class BleMachineRepository @Inject constructor(
         // Get current capabilities for proper capability levels
         val capabilities = _systemStatus.value.capabilities
 
+        // Extract lazy polling state from run state (needed for PidData thresholds)
+        // Use current system status as fallback if run state not in telemetry
+        val runState = snapshot.runState
+        val lazyPollActive = runState?.lazyPollActive ?: _systemStatus.value.lazyPollActive
+
         // Map controller data to PidData
         val pidList = snapshot.controllers.map { controller ->
             val isLn2Controller = controller.controllerId == 1
@@ -428,10 +452,14 @@ class BleMachineRepository @Inject constructor(
                 hasFault = false, // Checked via alarm bits
                 ageMs = controller.ageMs,
                 capabilityLevel = capabilities.getPidCapability(controller.controllerId),
-                probeError = probeError
+                probeError = probeError,
+                lazyPollActive = lazyPollActive  // Pass to PidData for dynamic thresholds
             )
         }
         _pidData.value = pidList
+
+        // Track probe error transitions for history
+        trackProbeErrorTransitions(pidList)
 
         // Map alarm bits to alarms
         updateAlarmsFromBits(snapshot.alarmBits)
@@ -456,6 +484,20 @@ class BleMachineRepository @Inject constructor(
             isMotorEnabled = (snapshot.roBits and 0x04) != 0
         )
 
+        // Extract idle timeout from run state (lazyPollActive already extracted above)
+        val idleTimeoutMin = runState?.idleTimeoutMin ?: 0
+
+        // Debug: log run state presence periodically
+        if (runState == null && System.currentTimeMillis() % 5000 < 100) {
+            Log.w(TAG, "Telemetry: No run state data (firmware may not be sending extended telemetry)")
+        }
+
+        // Update mcuIdleTimeoutMinutes from telemetry (MCU is source of truth)
+        if (runState != null && _mcuIdleTimeoutMinutes.value != idleTimeoutMin) {
+            Log.d(TAG, "Idle timeout synced from telemetry: $idleTimeoutMin min, lazyPollActive=$lazyPollActive")
+            _mcuIdleTimeoutMinutes.value = idleTimeoutMin
+        }
+
         // Update system status
         val alarmList = _alarms.value
         val currentStatus = _systemStatus.value
@@ -471,7 +513,11 @@ class BleMachineRepository @Inject constructor(
                     .filter { it.state == AlarmState.ACTIVE }
                     .maxByOrNull { it.severity.value }
                     ?.severity
-            )
+            ),
+            // Only update lazy polling state if firmware provides run state data
+            // Otherwise preserve existing values (set via SET_IDLE_TIMEOUT command)
+            lazyPollActive = if (runState != null) lazyPollActive else currentStatus.lazyPollActive,
+            idleTimeoutMinutes = if (runState != null) idleTimeoutMin else currentStatus.idleTimeoutMinutes
         )
     }
 
@@ -493,6 +539,13 @@ class BleMachineRepository @Inject constructor(
         val newAlarms = mutableListOf<Alarm>()
         val bits = alarmBits.toInt()
         val now = Instant.now()
+
+        // Track alarm transitions for history
+        val changed = bits.toLong() xor previousAlarmBits
+        if (changed != 0L) {
+            trackAlarmTransitions(bits.toLong(), changed, now)
+        }
+        previousAlarmBits = bits.toLong()
 
         if (bits and AlarmBits.ESTOP_ACTIVE != 0) {
             newAlarms.add(Alarm(
@@ -586,6 +639,103 @@ class BleMachineRepository @Inject constructor(
         }
 
         _alarms.value = newAlarms
+    }
+
+    /**
+     * Track alarm bit transitions for history.
+     * Records both assertions and clears for debugging transient alarms.
+     */
+    private fun trackAlarmTransitions(currentBits: Long, changedBits: Long, timestamp: Instant) {
+        val newEntries = mutableListOf<AlarmHistoryEntry>()
+        var newUnackBits = _unacknowledgedAlarmBits.value
+
+        for (bit in AlarmBitDefinitions.ALL_BITS) {
+            if ((changedBits and bit.toLong()) != 0L) {
+                val isNowSet = (currentBits and bit.toLong()) != 0L
+
+                newEntries.add(
+                    AlarmHistoryEntry(
+                        timestamp = timestamp,
+                        alarmBit = bit,
+                        alarmName = AlarmBitDefinitions.getName(bit),
+                        severity = AlarmBitDefinitions.getSeverity(bit),
+                        wasAsserted = isNowSet
+                    )
+                )
+
+                if (isNowSet) {
+                    // Add to unacknowledged
+                    newUnackBits = newUnackBits or bit
+                    Log.d(TAG, "Alarm ASSERTED: ${AlarmBitDefinitions.getName(bit)}")
+                } else {
+                    Log.d(TAG, "Alarm CLEARED: ${AlarmBitDefinitions.getName(bit)}")
+                }
+            }
+        }
+
+        if (newEntries.isNotEmpty()) {
+            // Prepend new entries to history (most recent first), keep last 100
+            val currentHistory = _alarmHistory.value
+            _alarmHistory.value = (newEntries + currentHistory).take(100)
+            _unacknowledgedAlarmBits.value = newUnackBits
+        }
+    }
+
+    /**
+     * Track probe error transitions for history.
+     * App-detected probe errors (HHHH/LLLL) are logged separately from MCU alarms
+     * to help debug transient probe issues.
+     */
+    private fun trackProbeErrorTransitions(pidList: List<PidData>) {
+        val newEntries = mutableListOf<AlarmHistoryEntry>()
+        val now = Instant.now()
+
+        for (pid in pidList) {
+            val previousError = previousProbeErrors[pid.controllerId] ?: ProbeError.NONE
+            val currentError = pid.probeError
+
+            if (previousError != currentError) {
+                // Transition detected
+                if (currentError != ProbeError.NONE) {
+                    // Probe error appeared
+                    val errorName = "${pid.name} Probe ${currentError.shortName}"
+                    newEntries.add(
+                        AlarmHistoryEntry(
+                            timestamp = now,
+                            alarmBit = 0,  // Not an MCU alarm bit
+                            alarmName = errorName,
+                            severity = AlarmSeverity.WARNING,  // Probe errors are warnings, not critical
+                            wasAsserted = true,
+                            source = AlarmHistorySource.APP_PROBE_ERROR
+                        )
+                    )
+                    Log.d(TAG, "Probe error DETECTED: $errorName (PV=${pid.processValue}°C)")
+                } else {
+                    // Probe error cleared
+                    val errorName = "${pid.name} Probe ${previousError.shortName}"
+                    newEntries.add(
+                        AlarmHistoryEntry(
+                            timestamp = now,
+                            alarmBit = 0,
+                            alarmName = errorName,
+                            severity = AlarmSeverity.WARNING,
+                            wasAsserted = false,
+                            source = AlarmHistorySource.APP_PROBE_ERROR
+                        )
+                    )
+                    Log.d(TAG, "Probe error CLEARED: $errorName")
+                }
+
+                // Update tracked state
+                previousProbeErrors[pid.controllerId] = currentError
+            }
+        }
+
+        if (newEntries.isNotEmpty()) {
+            // Prepend new entries to history (most recent first), keep last 100
+            val currentHistory = _alarmHistory.value
+            _alarmHistory.value = (newEntries + currentHistory).take(100)
+        }
     }
 
     private fun processEvent(event: EventParser.Event) {
@@ -1023,6 +1173,18 @@ class BleMachineRepository @Inject constructor(
         }
     }
 
+    override suspend fun acknowledgeAlarmBits(bits: Int) {
+        // Remove acknowledged bits from unacknowledged set
+        _unacknowledgedAlarmBits.value = _unacknowledgedAlarmBits.value and bits.inv()
+        Log.d(TAG, "Acknowledged alarm bits: 0x${bits.toString(16)}, remaining unack: 0x${_unacknowledgedAlarmBits.value.toString(16)}")
+    }
+
+    override suspend fun clearAlarmHistory() {
+        _alarmHistory.value = emptyList()
+        _unacknowledgedAlarmBits.value = 0
+        Log.d(TAG, "Cleared alarm history")
+    }
+
     override suspend fun setRelay(channel: Int, on: Boolean): Result<Unit> {
         require(channel in 1..8) { "Channel must be 1-8" }
 
@@ -1213,23 +1375,44 @@ class BleMachineRepository @Inject constructor(
     }
 
     // ==================== Lazy Polling Configuration ====================
+    // Firmware v0.3.7+ uses CMD_SET_LAZY_POLL (0x0060) and CMD_GET_LAZY_POLL (0x0061)
+    // Payload format: [enable (u8), timeout_min (u8)]
 
     override suspend fun setIdleTimeout(minutes: Int): Result<Unit> {
         require(minutes in 0..255) { "Timeout must be 0-255 minutes" }
 
-        Log.w(TAG, ">>> SET_IDLE_TIMEOUT: sending $minutes minutes (0x${minutes.toString(16)})")
-        val payload = byteArrayOf(minutes.toByte())
+        // Try new firmware format first: [enable (0/1), timeout_min]
+        val enable: Byte = if (minutes > 0) 1 else 0
+        val newPayload = byteArrayOf(enable, minutes.toByte())
 
-        val ack = bleManager.sendCommand(
-            cmdId = CommandId.SET_IDLE_TIMEOUT,
-            payload = payload
+        Log.w(TAG, ">>> SET_LAZY_POLL (0x0060): enable=$enable, timeout=$minutes minutes")
+
+        var ack = bleManager.sendCommand(
+            cmdId = CommandId.SET_LAZY_POLL,
+            payload = newPayload
         )
 
-        Log.w(TAG, "<<< SET_IDLE_TIMEOUT ACK: status=${ack?.status}, detail=${ack?.detail}, data=${ack?.optionalData?.contentToString()}")
+        Log.w(TAG, "<<< SET_LAZY_POLL ACK: status=${ack?.status}, detail=${ack?.detail}")
+
+        // If new command fails, try legacy format: [timeout_min] (0=disabled)
+        if (ack?.status != AckStatus.OK) {
+            Log.w(TAG, "SET_LAZY_POLL failed, trying legacy SET_IDLE_TIMEOUT (0x0040)")
+            val legacyPayload = byteArrayOf(minutes.toByte())
+            ack = bleManager.sendCommand(
+                cmdId = CommandId.SET_IDLE_TIMEOUT_LEGACY,
+                payload = legacyPayload
+            )
+            Log.w(TAG, "<<< SET_IDLE_TIMEOUT (legacy) ACK: status=${ack?.status}, detail=${ack?.detail}")
+        }
 
         return if (ack?.status == AckStatus.OK) {
             Log.w(TAG, "Set idle timeout SUCCESS: $minutes minutes")
             _mcuIdleTimeoutMinutes.value = minutes // Update local state to match MCU
+            // Also update SystemStatus directly (fallback when firmware doesn't send extended telemetry)
+            val currentStatus = _systemStatus.value
+            _systemStatus.value = currentStatus.copy(
+                idleTimeoutMinutes = minutes
+            )
             Result.success(Unit)
         } else {
             val detail = when (ack?.detail) {
@@ -1242,17 +1425,144 @@ class BleMachineRepository @Inject constructor(
     }
 
     override suspend fun getIdleTimeout(): Result<Int> {
-        val ack = bleManager.sendCommand(
-            cmdId = CommandId.GET_IDLE_TIMEOUT,
+        // Try new command format first (0x0061)
+        Log.d(TAG, ">>> GET_LAZY_POLL (0x0061)")
+        var ack = bleManager.sendCommand(
+            cmdId = CommandId.GET_LAZY_POLL,
             payload = byteArrayOf()
         )
 
-        return if (ack?.status == AckStatus.OK && ack.optionalData.isNotEmpty()) {
+        // If new command fails, try legacy command (0x0041)
+        if (ack?.status != AckStatus.OK) {
+            Log.d(TAG, "GET_LAZY_POLL failed (${ack?.status}), trying legacy GET_IDLE_TIMEOUT (0x0041)")
+            ack = bleManager.sendCommand(
+                cmdId = CommandId.GET_IDLE_TIMEOUT_LEGACY,
+                payload = byteArrayOf()
+            )
+        }
+
+        // New firmware format: [enabled (u8), timeout_min (u8)]
+        return if (ack?.status == AckStatus.OK && ack.optionalData.size >= 2) {
+            val enabled = ack.optionalData[0].toInt() and 0xFF
+            val minutes = ack.optionalData[1].toInt() and 0xFF
+            Log.d(TAG, "Get lazy poll: enabled=$enabled, timeout=$minutes minutes")
+            // Return 0 if disabled, otherwise return the timeout
+            val effectiveMinutes = if (enabled == 1) minutes else 0
+            Result.success(effectiveMinutes)
+        } else if (ack?.status == AckStatus.OK && ack.optionalData.size == 1) {
+            // Legacy firmware format (single byte = timeout minutes, 0=disabled)
             val minutes = ack.optionalData[0].toInt() and 0xFF
-            Log.d(TAG, "Get idle timeout: $minutes minutes")
+            Log.d(TAG, "Get lazy poll (legacy format): timeout=$minutes minutes")
             Result.success(minutes)
         } else {
-            val detail = "Get idle timeout failed: ${ack?.status}"
+            val detail = "Get lazy poll failed: ${ack?.status}"
+            Log.e(TAG, detail)
+            Result.failure(RuntimeException(detail))
+        }
+    }
+
+    // ==========================================
+    // Safety Gate Commands (v0.4.0+)
+    // ==========================================
+
+    override suspend fun getCapabilities(): Result<Map<Int, Int>> {
+        Log.d(TAG, ">>> GET_CAPABILITIES (0x0070)")
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.GET_CAPABILITIES,
+            payload = byteArrayOf()
+        )
+
+        return if (ack?.status == AckStatus.OK && ack.optionalData.size >= 7) {
+            // Response: 7 bytes, one per subsystem (PID1, PID2, PID3, ESTOP, DOOR, LN2, MOTOR)
+            val capabilities = mutableMapOf<Int, Int>()
+            for (i in 0 until minOf(7, ack.optionalData.size)) {
+                capabilities[i] = ack.optionalData[i].toInt() and 0xFF
+            }
+            Log.d(TAG, "Get capabilities: $capabilities")
+            Result.success(capabilities)
+        } else {
+            val detail = "Get capabilities failed: ${ack?.status}"
+            Log.e(TAG, detail)
+            Result.failure(RuntimeException(detail))
+        }
+    }
+
+    override suspend fun setCapability(subsystemId: Int, level: Int): Result<Unit> {
+        Log.d(TAG, ">>> SET_CAPABILITY (0x0071): subsystem=$subsystemId, level=$level")
+
+        // E-Stop capability cannot be changed
+        if (subsystemId == SubsystemId.ESTOP.toInt()) {
+            return Result.failure(IllegalArgumentException("E-Stop capability cannot be changed"))
+        }
+
+        val payload = byteArrayOf(
+            subsystemId.toByte(),
+            level.toByte()
+        )
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.SET_CAPABILITY,
+            payload = payload
+        )
+
+        return if (ack?.status == AckStatus.OK) {
+            Log.d(TAG, "Set capability success")
+            Result.success(Unit)
+        } else {
+            val detail = "Set capability failed: ${ack?.status}"
+            Log.e(TAG, detail)
+            Result.failure(RuntimeException(detail))
+        }
+    }
+
+    override suspend fun getSafetyGates(): Result<Pair<Int, Int>> {
+        Log.d(TAG, ">>> GET_SAFETY_GATES (0x0072)")
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.GET_SAFETY_GATES,
+            payload = byteArrayOf()
+        )
+
+        return if (ack?.status == AckStatus.OK && ack.optionalData.size >= 4) {
+            // Response: 4 bytes = gate_enable (u16 LE), gate_status (u16 LE)
+            val enableMask = (ack.optionalData[0].toInt() and 0xFF) or
+                    ((ack.optionalData[1].toInt() and 0xFF) shl 8)
+            val statusMask = (ack.optionalData[2].toInt() and 0xFF) or
+                    ((ack.optionalData[3].toInt() and 0xFF) shl 8)
+
+            Log.d(TAG, "Get safety gates: enable=0x${enableMask.toString(16)}, status=0x${statusMask.toString(16)}")
+            Result.success(Pair(enableMask, statusMask))
+        } else {
+            val detail = "Get safety gates failed: ${ack?.status}"
+            Log.e(TAG, detail)
+            Result.failure(RuntimeException(detail))
+        }
+    }
+
+    override suspend fun setSafetyGate(gateId: Int, enabled: Boolean): Result<Unit> {
+        Log.d(TAG, ">>> SET_SAFETY_GATE (0x0073): gate=$gateId, enabled=$enabled")
+
+        // E-Stop gate cannot be bypassed
+        if (gateId == SafetyGateId.ESTOP.toInt() && !enabled) {
+            return Result.failure(IllegalArgumentException("E-Stop gate cannot be bypassed"))
+        }
+
+        val payload = byteArrayOf(
+            gateId.toByte(),
+            if (enabled) 1 else 0
+        )
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.SET_SAFETY_GATE,
+            payload = payload
+        )
+
+        return if (ack?.status == AckStatus.OK) {
+            Log.d(TAG, "Set safety gate success")
+            Result.success(Unit)
+        } else {
+            val detail = "Set safety gate failed: ${ack?.status}"
             Log.e(TAG, detail)
             Result.failure(RuntimeException(detail))
         }

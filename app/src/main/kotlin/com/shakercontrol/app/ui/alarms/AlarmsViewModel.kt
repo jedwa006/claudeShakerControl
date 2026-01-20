@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shakercontrol.app.data.repository.MachineRepository
 import com.shakercontrol.app.domain.model.Alarm
+import com.shakercontrol.app.domain.model.AlarmHistoryEntry
 import com.shakercontrol.app.domain.model.ConnectionState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -28,6 +29,17 @@ class AlarmsViewModel @Inject constructor(
 ) : ViewModel() {
 
     val alarms: StateFlow<List<Alarm>> = machineRepository.alarms
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    /**
+     * Alarm transition history - records every alarm bit assertion and clearance.
+     * Shows transient alarms that may appear briefly then clear.
+     */
+    val alarmHistory: StateFlow<List<AlarmHistoryEntry>> = machineRepository.alarmHistory
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
