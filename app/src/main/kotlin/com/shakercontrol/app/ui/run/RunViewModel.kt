@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -237,6 +238,111 @@ class RunViewModel @Inject constructor(
             } else {
                 slot
             }
+        }
+    }
+
+    // ==========================================
+    // Service Mode PID Controls (Heat/Cool buttons)
+    // ==========================================
+
+    /**
+     * Whether heater PIDs (PID 2 & 3) are currently enabled (mode = AUTO).
+     * Returns true if at least one heater is enabled.
+     */
+    val areHeatersEnabled: StateFlow<Boolean> = pidData
+        .map { pids ->
+            val heaterPids = pids.filter { it.controllerId in listOf(2, 3) }
+            heaterPids.any { it.mode == PidMode.AUTO }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
+    /**
+     * Whether cooling PID (PID 1) is currently enabled (mode = AUTO).
+     */
+    val isCoolingEnabled: StateFlow<Boolean> = pidData
+        .map { pids ->
+            pids.find { it.controllerId == 1 }?.mode == PidMode.AUTO
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
+    /**
+     * Toggle heater PIDs (PID 2 & 3) between AUTO and STOP.
+     * If any heater is enabled, stops all heaters.
+     * If all heaters are stopped, enables all connected heaters.
+     */
+    fun toggleHeaters() {
+        viewModelScope.launch {
+            val currentPids = pidData.value
+            val heaterPids = currentPids.filter { it.controllerId in listOf(2, 3) && !it.isOffline }
+
+            if (heaterPids.isEmpty()) {
+                _uiEvents.emit(RunUiEvent.CommandError("No heater controllers connected"))
+                return@launch
+            }
+
+            val anyEnabled = heaterPids.any { it.mode == PidMode.AUTO }
+            val targetMode = if (anyEnabled) PidMode.STOP else PidMode.AUTO
+
+            _isExecutingCommand.value = true
+            var hasError = false
+
+            for (pid in heaterPids) {
+                val result = machineRepository.setMode(pid.controllerId, targetMode)
+                result.onFailure { error ->
+                    hasError = true
+                    _uiEvents.emit(RunUiEvent.CommandError(
+                        "Failed to set PID ${pid.controllerId} mode: ${error.message}"
+                    ))
+                }
+            }
+
+            _isExecutingCommand.value = false
+
+            if (!hasError) {
+                val action = if (targetMode == PidMode.AUTO) "enabled" else "disabled"
+                _uiEvents.emit(RunUiEvent.CommandSuccess)
+            }
+        }
+    }
+
+    /**
+     * Toggle cooling PID (PID 1) between AUTO and STOP.
+     */
+    fun toggleCooling() {
+        viewModelScope.launch {
+            val currentPids = pidData.value
+            val coolingPid = currentPids.find { it.controllerId == 1 }
+
+            if (coolingPid == null || coolingPid.isOffline) {
+                _uiEvents.emit(RunUiEvent.CommandError("LN2 cooling controller not connected"))
+                return@launch
+            }
+
+            val targetMode = if (coolingPid.mode == PidMode.AUTO) PidMode.STOP else PidMode.AUTO
+
+            _isExecutingCommand.value = true
+
+            val result = machineRepository.setMode(1, targetMode)
+            result.fold(
+                onSuccess = {
+                    _uiEvents.emit(RunUiEvent.CommandSuccess)
+                },
+                onFailure = { error ->
+                    _uiEvents.emit(RunUiEvent.CommandError(
+                        "Failed to set LN2 mode: ${error.message}"
+                    ))
+                }
+            )
+
+            _isExecutingCommand.value = false
         }
     }
 }

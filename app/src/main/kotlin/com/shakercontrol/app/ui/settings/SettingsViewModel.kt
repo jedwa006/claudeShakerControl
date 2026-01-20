@@ -159,4 +159,40 @@ class SettingsViewModel @Inject constructor(
             devicePreferences.setAutoReconnectEnabled(enabled)
         }
     }
+
+    // ==========================================
+    // Lazy Polling Settings
+    // ==========================================
+
+    val lazyPollingEnabled: StateFlow<Boolean> = devicePreferences.lazyPollingEnabled
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
+    val lazyPollingIdleTimeoutMinutes: StateFlow<Int> = devicePreferences.lazyPollingIdleTimeoutMinutes
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = DevicePreferences.DEFAULT_IDLE_TIMEOUT_MINUTES
+        )
+
+    fun setLazyPollingEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            devicePreferences.setLazyPollingEnabled(enabled)
+            // TODO: Send command to firmware to enable/disable lazy polling
+            // machineRepository.setLazyPolling(enabled, lazyPollingIdleTimeoutMinutes.value)
+        }
+    }
+
+    fun setLazyPollingIdleTimeoutMinutes(minutes: Int) {
+        viewModelScope.launch {
+            devicePreferences.setLazyPollingIdleTimeoutMinutes(minutes)
+            // TODO: Send command to firmware with new timeout
+            // if (lazyPollingEnabled.value) {
+            //     machineRepository.setLazyPolling(true, minutes)
+            // }
+        }
+    }
 }

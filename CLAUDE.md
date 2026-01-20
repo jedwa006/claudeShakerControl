@@ -148,6 +148,8 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradle
 ### Deep Links (Debug Navigation)
 The app supports deep links for programmatic navigation and actions. Use these via adb:
 
+**IMPORTANT:** Always prefer deep links over `adb shell input tap` for navigation and actions. Deep links are reliable and don't require coordinate calculations or UI state checks. Only use tap interactions when specifically testing touch behavior.
+
 ```bash
 # Navigation deep links (navigate to screens)
 adb shell am start -a android.intent.action.VIEW -d "shaker://run" com.shakercontrol.app.debug
@@ -157,6 +159,11 @@ adb shell am start -a android.intent.action.VIEW -d "shaker://diagnostics" com.s
 adb shell am start -a android.intent.action.VIEW -d "shaker://alarms" com.shakercontrol.app.debug
 adb shell am start -a android.intent.action.VIEW -d "shaker://io" com.shakercontrol.app.debug
 adb shell am start -a android.intent.action.VIEW -d "shaker://pid/1" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://pid/2" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://pid/3" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://registers/1" com.shakercontrol.app.debug  # Register editor for PID 1
+adb shell am start -a android.intent.action.VIEW -d "shaker://registers/2" com.shakercontrol.app.debug  # Register editor for PID 2
+adb shell am start -a android.intent.action.VIEW -d "shaker://registers/3" com.shakercontrol.app.debug  # Register editor for PID 3
 
 # Action deep links (trigger behavior)
 adb shell am start -a android.intent.action.VIEW -d "shaker://action/reconnect" com.shakercontrol.app.debug
@@ -258,11 +265,17 @@ The Settings screen now includes a Device section with:
 - **PID error handling**: Probe error detection (HHHH/LLLL), pulsing red border for errors, status badges
 - **Capability override editing**: Service mode allows editing capability levels with OVERRIDE badge
 - **Threshold tuning**: Stale threshold 1500ms (was 500ms), probe error threshold 500°C (was 3000°C)
+- **Register Editor**: Direct Modbus register read/write for PID controllers (service mode)
+- **Lazy Polling Settings**: UI in Settings screen for idle timeout configuration (firmware TODO)
+- **Heat/Cool Buttons**: Service mode PID control - toggles heater PIDs (2&3) and LN2 cooling (PID 1) between AUTO/STOP
+- **Duration/Cycle Picker Dialogs**: Replaced text field inputs with spinner-based picker dialogs for better UX
+- **Recipe Header Layout**: Mill/Hold totals moved to header row alongside estimated total time
 
 **Remaining:**
 1. Recipe persistence (save/load recipes)
 2. Recipe transfer to MCU (if applicable)
 3. QR code recipe import (future feature)
+4. Lazy polling firmware command integration
 
 ### Known Issues
 - Connect popup on first start doesn't initiate connect sequence (must use Devices screen)

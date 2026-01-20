@@ -100,4 +100,22 @@ interface MachineRepository {
     val capabilityOverrides: StateFlow<SubsystemCapabilities?>
     suspend fun setCapabilityOverride(subsystem: String, level: CapabilityLevel)
     suspend fun clearCapabilityOverrides()
+
+    // Generic Modbus register access (for register editor)
+    /**
+     * Read one or more consecutive registers from a PID controller.
+     * @param controllerId Controller address (1-3)
+     * @param startAddress Starting register address
+     * @param count Number of registers to read (1-16)
+     * @return List of register values (as raw u16)
+     */
+    suspend fun readRegisters(controllerId: Int, startAddress: Int, count: Int): Result<List<Int>>
+
+    /**
+     * Write a single register to a PID controller.
+     * @param controllerId Controller address (1-3)
+     * @param address Register address
+     * @param value Value to write (as raw u16)
+     */
+    suspend fun writeRegister(controllerId: Int, address: Int, value: Int): Result<Unit>
 }

@@ -4,7 +4,6 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
@@ -43,7 +42,11 @@ fun RecipeSection(
     isRunning: Boolean,
     interlockStatus: InterlockStatus,
     isServiceMode: Boolean,
+    areHeatersEnabled: Boolean = false,
+    isCoolingEnabled: Boolean = false,
     onRecipeChange: (Recipe) -> Unit,
+    onToggleHeaters: () -> Unit = {},
+    onToggleCooling: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(modifier = modifier) {
@@ -64,9 +67,15 @@ fun RecipeSection(
                 Spacer(modifier = Modifier.height(8.dp))
                 RunProgressDisplay(runProgress = runProgress)
             } else {
-                // Idle: Show controls (Lights, Door, + Heat/Motor in service mode)
+                // Idle: Show controls (Lights, Door, + Heat/Cool in service mode)
                 Spacer(modifier = Modifier.height(8.dp))
-                ControlsRow(isServiceMode = isServiceMode)
+                ControlsRow(
+                    isServiceMode = isServiceMode,
+                    areHeatersEnabled = areHeatersEnabled,
+                    isCoolingEnabled = isCoolingEnabled,
+                    onToggleHeaters = onToggleHeaters,
+                    onToggleCooling = onToggleCooling
+                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -91,7 +100,7 @@ private fun RecipeConfigSection(
     isRunning: Boolean,
     onRecipeChange: (Recipe) -> Unit
 ) {
-    // Header row with title and estimated total
+    // Header row with title, Mill/Hold totals, and estimated total
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -102,28 +111,47 @@ private fun RecipeConfigSection(
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold
         )
-        // Prominent total time display
-        Surface(
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-            shape = MaterialTheme.shapes.small
+
+        // Mill/Hold totals and estimated total grouped together
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // Mill total
+            Text(
+                text = "Mill: ${formatDurationLong(recipe.totalMillingTime)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            // Hold total
+            Text(
+                text = "Hold: ${formatDurationLong(recipe.totalHoldingTime)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            // Prominent total time display
+            Surface(
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                shape = MaterialTheme.shapes.small
             ) {
-                Icon(
-                    imageVector = Icons.Default.Schedule,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                Text(
-                    text = formatDurationLong(recipe.totalRuntime),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Schedule,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Text(
+                        text = formatDurationLong(recipe.totalRuntime),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
             }
         }
     }
@@ -157,24 +185,6 @@ private fun RecipeConfigSection(
         )
     }
 
-    Spacer(modifier = Modifier.height(6.dp))
-
-    // Derived totals - inline with muted styling
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Text(
-            text = "Mill: ${formatDurationLong(recipe.totalMillingTime)}",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = "Hold: ${formatDurationLong(recipe.totalHoldingTime)}",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
 }
 
 /**
@@ -193,7 +203,11 @@ private fun SectionDivider() {
  */
 @Composable
 private fun ControlsRow(
-    isServiceMode: Boolean
+    isServiceMode: Boolean,
+    areHeatersEnabled: Boolean = false,
+    isCoolingEnabled: Boolean = false,
+    onToggleHeaters: () -> Unit = {},
+    onToggleCooling: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -218,7 +232,7 @@ private fun ControlsRow(
             icon = Icons.Default.Lock
         )
 
-        // Service mode controls
+        // Service mode controls - Heat and Cool buttons for PID control
         if (isServiceMode) {
             Spacer(modifier = Modifier.weight(1f))
             Surface(
@@ -233,15 +247,21 @@ private fun ControlsRow(
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
-            ReadinessToggleButton(
+            // Heat button - controls PID 2 & 3 (heater bearings)
+            PidControlToggleButton(
                 label = "Heat",
                 icon = Icons.Default.Whatshot,
-                warningColor = true
+                isEnabled = areHeatersEnabled,
+                warningColor = true,
+                onClick = onToggleHeaters
             )
-            ReadinessToggleButton(
-                label = "Motor",
-                icon = Icons.Default.Settings,
-                warningColor = true
+            // Cool button - controls PID 1 (LN2)
+            PidControlToggleButton(
+                label = "Cool",
+                icon = Icons.Default.AcUnit,
+                isEnabled = isCoolingEnabled,
+                warningColor = true,
+                onClick = onToggleCooling
             )
         }
     }
@@ -386,6 +406,72 @@ private fun ReadinessToggleButton(
     }
 }
 
+/**
+ * PID control toggle button for service mode Heat/Cool controls.
+ * Shows actual PID state with pulsing animation when enabled.
+ */
+@Composable
+private fun PidControlToggleButton(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isEnabled: Boolean,
+    warningColor: Boolean = true,
+    onClick: () -> Unit
+) {
+    // Pulsing animation when enabled
+    val infiniteTransition = rememberInfiniteTransition(label = "${label}_pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = if (isEnabled) 0.5f else 0.3f,
+        targetValue = if (isEnabled) 0.8f else 0.3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "${label}_alpha"
+    )
+
+    val backgroundColor = when {
+        isEnabled && warningColor -> SemanticColors.Warning.copy(alpha = pulseAlpha)
+        isEnabled -> SemanticColors.Normal.copy(alpha = pulseAlpha)
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    }
+
+    val contentColor = when {
+        isEnabled && warningColor -> SemanticColors.Warning
+        isEnabled -> SemanticColors.Normal
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Surface(
+        onClick = onClick,
+        color = backgroundColor,
+        shape = MaterialTheme.shapes.small
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                modifier = Modifier.size(16.dp),
+                tint = contentColor
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = contentColor,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+/**
+ * Duration input that shows a picker dialog when tapped.
+ * Much better UX than trying to type mm:ss format.
+ */
 @Composable
 private fun DurationInput(
     label: String,
@@ -394,25 +480,151 @@ private fun DurationInput(
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    var text by remember(duration) {
-        mutableStateOf(formatDuration(duration))
+    var showPicker by remember { mutableStateOf(false) }
+
+    if (showPicker) {
+        DurationPickerDialog(
+            title = label,
+            initialDuration = duration,
+            onDismiss = { showPicker = false },
+            onConfirm = { newDuration ->
+                onDurationChange(newDuration)
+                showPicker = false
+            }
+        )
     }
 
-    OutlinedTextField(
-        value = text,
-        onValueChange = { newText ->
-            text = newText
-            parseDuration(newText)?.let { onDurationChange(it) }
+    // Clickable display that opens the picker
+    OutlinedCard(
+        onClick = { if (enabled) showPicker = true },
+        modifier = modifier,
+        enabled = enabled
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            )
+            Text(
+                text = formatDuration(duration),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            )
+        }
+    }
+}
+
+/**
+ * Dialog with minute and second spinners for duration input.
+ */
+@Composable
+private fun DurationPickerDialog(
+    title: String,
+    initialDuration: Duration,
+    onDismiss: () -> Unit,
+    onConfirm: (Duration) -> Unit
+) {
+    val totalSeconds = initialDuration.inWholeSeconds.toInt()
+    var minutes by remember { mutableStateOf(totalSeconds / 60) }
+    var seconds by remember { mutableStateOf(totalSeconds % 60) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Minutes spinner
+                NumberSpinner(
+                    value = minutes,
+                    onValueChange = { minutes = it },
+                    range = 0..99,
+                    label = "min"
+                )
+
+                Text(
+                    text = ":",
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                )
+
+                // Seconds spinner
+                NumberSpinner(
+                    value = seconds,
+                    onValueChange = { seconds = it },
+                    range = 0..59,
+                    label = "sec"
+                )
+            }
         },
-        label = { Text(label) },
-        placeholder = { Text("mm:ss") },
-        enabled = enabled,
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = modifier
+        confirmButton = {
+            Button(onClick = {
+                onConfirm((minutes.minutes + seconds.seconds))
+            }) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
     )
 }
 
+/**
+ * Simple number spinner with +/- buttons.
+ */
+@Composable
+private fun NumberSpinner(
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    range: IntRange,
+    label: String
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Increment button
+        IconButton(
+            onClick = { if (value < range.last) onValueChange(value + 1) }
+        ) {
+            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Increase")
+        }
+
+        // Value display
+        Text(
+            text = String.format("%02d", value),
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold
+        )
+
+        // Label
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        // Decrement button
+        IconButton(
+            onClick = { if (value > range.first) onValueChange(value - 1) }
+        ) {
+            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Decrease")
+        }
+    }
+}
+
+/**
+ * Cycle count input with picker dialog.
+ */
 @Composable
 private fun CycleInput(
     cycles: Int,
@@ -420,22 +632,81 @@ private fun CycleInput(
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    var text by remember(cycles) {
-        mutableStateOf(cycles.toString())
+    var showPicker by remember { mutableStateOf(false) }
+
+    if (showPicker) {
+        CyclePickerDialog(
+            initialCycles = cycles,
+            onDismiss = { showPicker = false },
+            onConfirm = { newCycles ->
+                onCyclesChange(newCycles)
+                showPicker = false
+            }
+        )
     }
 
-    OutlinedTextField(
-        value = text,
-        onValueChange = { newText ->
-            text = newText
-            newText.toIntOrNull()?.takeIf { it >= 1 }?.let { onCyclesChange(it) }
+    // Clickable display that opens the picker
+    OutlinedCard(
+        onClick = { if (enabled) showPicker = true },
+        modifier = modifier,
+        enabled = enabled
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            Text(
+                text = "Cycles",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            )
+            Text(
+                text = cycles.toString(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            )
+        }
+    }
+}
+
+/**
+ * Dialog for selecting cycle count.
+ */
+@Composable
+private fun CyclePickerDialog(
+    initialCycles: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    var cycles by remember { mutableStateOf(initialCycles) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Cycles") },
+        text = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                NumberSpinner(
+                    value = cycles,
+                    onValueChange = { cycles = it },
+                    range = 1..99,
+                    label = "cycles"
+                )
+            }
         },
-        label = { Text("Cycles") },
-        placeholder = { Text("1") },
-        enabled = enabled,
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = modifier
+        confirmButton = {
+            Button(onClick = { onConfirm(cycles) }) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
     )
 }
 

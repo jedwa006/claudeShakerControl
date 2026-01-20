@@ -41,6 +41,8 @@ fun RunScreen(
     val isExecutingCommand by viewModel.isExecutingCommand.collectAsStateWithLifecycle()
     val startGating by viewModel.startGating.collectAsStateWithLifecycle()
     val displaySlots by viewModel.displaySlots.collectAsStateWithLifecycle()
+    val areHeatersEnabled by viewModel.areHeatersEnabled.collectAsStateWithLifecycle()
+    val isCoolingEnabled by viewModel.isCoolingEnabled.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
     var showStopDialog by remember { mutableStateOf(false) }
@@ -94,11 +96,15 @@ fun RunScreen(
             isExecutingCommand = isExecutingCommand,
             startGating = startGating,
             displaySlots = displaySlots,
+            areHeatersEnabled = areHeatersEnabled,
+            isCoolingEnabled = isCoolingEnabled,
             onRecipeChange = viewModel::updateRecipe,
             onStart = viewModel::startRun,
             onPause = viewModel::pauseRun,
             onResume = viewModel::resumeRun,
             onStop = { showStopDialog = true },
+            onToggleHeaters = viewModel::toggleHeaters,
+            onToggleCooling = viewModel::toggleCooling,
             onNavigateToPid = onNavigateToPid,
             onNavigateToIo = onNavigateToIo,
             onDisplaySlotClick = { /* TODO: Open slot config dialog */ },
@@ -132,11 +138,15 @@ private fun RunScreenContent(
     isExecutingCommand: Boolean,
     startGating: StartGatingResult,
     displaySlots: List<DisplaySlot>,
+    areHeatersEnabled: Boolean,
+    isCoolingEnabled: Boolean,
     onRecipeChange: (Recipe) -> Unit,
     onStart: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
+    onToggleHeaters: () -> Unit,
+    onToggleCooling: () -> Unit,
     onNavigateToPid: (Int) -> Unit,
     onNavigateToIo: () -> Unit,
     onDisplaySlotClick: (Int) -> Unit,
@@ -162,7 +172,11 @@ private fun RunScreenContent(
                 isRunning = systemStatus.machineState.isOperating,
                 interlockStatus = interlockStatus,
                 isServiceMode = systemStatus.isServiceModeEnabled,
-                onRecipeChange = onRecipeChange
+                areHeatersEnabled = areHeatersEnabled,
+                isCoolingEnabled = isCoolingEnabled,
+                onRecipeChange = onRecipeChange,
+                onToggleHeaters = onToggleHeaters,
+                onToggleCooling = onToggleCooling
                 // No weight modifier - use only needed space
             )
 
@@ -461,11 +475,15 @@ private fun RunScreenPreview() {
                 isExecutingCommand = false,
                 startGating = StartGatingResult.OK,
                 displaySlots = emptyList(),
+                areHeatersEnabled = true,
+                isCoolingEnabled = true,
                 onRecipeChange = {},
                 onStart = {},
                 onPause = {},
                 onResume = {},
                 onStop = {},
+                onToggleHeaters = {},
+                onToggleCooling = {},
                 onNavigateToPid = {},
                 onNavigateToIo = {},
                 onDisplaySlotClick = {}
@@ -518,11 +536,15 @@ private fun RunScreenServiceModePreview() {
                     DisplaySlot(0, DisplaySource.TEMPERATURE_HISTORY, "Temperature Plot"),
                     DisplaySlot(1, DisplaySource.EMPTY, "Available")
                 ),
+                areHeatersEnabled = true,
+                isCoolingEnabled = false,  // Show cooling disabled for contrast
                 onRecipeChange = {},
                 onStart = {},
                 onPause = {},
                 onResume = {},
                 onStop = {},
+                onToggleHeaters = {},
+                onToggleCooling = {},
                 onNavigateToPid = {},
                 onNavigateToIo = {},
                 onDisplaySlotClick = {}

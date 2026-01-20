@@ -1117,4 +1117,74 @@ class BleMachineRepository @Inject constructor(
         _systemStatus.value = _systemStatus.value.copy(capabilities = SubsystemCapabilities.DEFAULT)
         Log.d(TAG, "Capability overrides cleared")
     }
+
+    // ==================== Generic Modbus Register Access ====================
+
+    override suspend fun readRegisters(controllerId: Int, startAddress: Int, count: Int): Result<List<Int>> {
+        require(controllerId in 1..3) { "Controller ID must be 1-3" }
+        require(count in 1..16) { "Count must be 1-16" }
+
+        val payload = ByteBuffer.allocate(4)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .put(controllerId.toByte())
+            .putShort(startAddress.toShort())
+            .put(count.toByte())
+            .array()
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.READ_REGISTERS,
+            payload = payload
+        )
+
+        return if (ack?.status == AckStatus.OK && ack.optionalData.size >= 4 + count * 2) {
+            val buffer = ByteBuffer.wrap(ack.optionalData).order(ByteOrder.LITTLE_ENDIAN)
+            val echoId = buffer.get().toInt() and 0xFF
+            val echoAddr = buffer.short.toInt() and 0xFFFF
+            val echoCount = buffer.get().toInt() and 0xFF
+
+            val values = (0 until echoCount).map {
+                buffer.short.toInt() and 0xFFFF
+            }
+
+            Log.d(TAG, "Read registers: controller=$echoId, addr=0x${echoAddr.toString(16)}, count=$echoCount, values=$values")
+            Result.success(values)
+        } else {
+            val detail = when (ack?.detail) {
+                AckDetail.CONTROLLER_OFFLINE -> "Controller offline"
+                else -> "Read failed: ${ack?.status}"
+            }
+            Log.e(TAG, "readRegisters failed: $detail")
+            Result.failure(RuntimeException(detail))
+        }
+    }
+
+    override suspend fun writeRegister(controllerId: Int, address: Int, value: Int): Result<Unit> {
+        require(controllerId in 1..3) { "Controller ID must be 1-3" }
+        require(value in 0..0xFFFF) { "Value must be 0-65535" }
+
+        val payload = ByteBuffer.allocate(5)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .put(controllerId.toByte())
+            .putShort(address.toShort())
+            .putShort(value.toShort())
+            .array()
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.WRITE_REGISTER,
+            payload = payload
+        )
+
+        return if (ack?.status == AckStatus.OK) {
+            Log.d(TAG, "Write register: controller=$controllerId, addr=0x${address.toString(16)}, value=$value")
+            Result.success(Unit)
+        } else {
+            val detail = when (ack?.detail) {
+                AckDetail.CONTROLLER_OFFLINE -> "Controller offline"
+                AckDetail.PARAM_OUT_OF_RANGE -> "Value out of range"
+                else -> "Write failed: ${ack?.status}"
+            }
+            Log.e(TAG, "writeRegister failed: $detail")
+            Result.failure(RuntimeException(detail))
+        }
+    }
 }

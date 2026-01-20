@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -28,6 +29,15 @@ class DevicePreferences @Inject constructor(
         val LAST_DEVICE_ADDRESS = stringPreferencesKey("last_device_address")
         val LAST_DEVICE_NAME = stringPreferencesKey("last_device_name")
         val AUTO_RECONNECT_ENABLED = booleanPreferencesKey("auto_reconnect_enabled")
+        val LAZY_POLLING_ENABLED = booleanPreferencesKey("lazy_polling_enabled")
+        val LAZY_POLLING_IDLE_TIMEOUT_MINUTES = intPreferencesKey("lazy_polling_idle_timeout_minutes")
+    }
+
+    companion object {
+        /** Available idle timeout options in minutes */
+        val IDLE_TIMEOUT_OPTIONS = listOf(1, 2, 3, 5, 10, 15, 30, 60)
+        /** Default idle timeout in minutes */
+        const val DEFAULT_IDLE_TIMEOUT_MINUTES = 3
     }
 
     val lastConnectedDevice: Flow<LastConnectedDevice?> = context.dataStore.data.map { prefs ->
@@ -61,6 +71,37 @@ class DevicePreferences @Inject constructor(
     suspend fun setAutoReconnectEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.AUTO_RECONNECT_ENABLED] = enabled
+        }
+    }
+
+    // ==========================================
+    // Lazy Polling Settings
+    // ==========================================
+
+    /**
+     * Whether lazy polling is enabled.
+     * When enabled, firmware reduces PID polling frequency when idle.
+     */
+    val lazyPollingEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.LAZY_POLLING_ENABLED] ?: false
+    }
+
+    /**
+     * Idle timeout before lazy polling activates (in minutes).
+     */
+    val lazyPollingIdleTimeoutMinutes: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[Keys.LAZY_POLLING_IDLE_TIMEOUT_MINUTES] ?: DEFAULT_IDLE_TIMEOUT_MINUTES
+    }
+
+    suspend fun setLazyPollingEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.LAZY_POLLING_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setLazyPollingIdleTimeoutMinutes(minutes: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.LAZY_POLLING_IDLE_TIMEOUT_MINUTES] = minutes
         }
     }
 }

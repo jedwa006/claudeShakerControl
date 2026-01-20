@@ -69,6 +69,11 @@ object CommandId {
     const val SET_ALARM_LIMITS: Short = 0x0027
     const val READ_ALARM_LIMITS: Short = 0x0028
 
+    // Generic Modbus register access (for register editor)
+    const val READ_REGISTERS: Short = 0x0030
+    const val WRITE_REGISTER: Short = 0x0031
+    const val WRITE_REGISTERS: Short = 0x0032
+
     // Maintenance / diagnostics
     const val REQUEST_SNAPSHOT_NOW: Short = 0x00F0.toShort()
     const val CLEAR_WARNINGS: Short = 0x00F1.toShort()

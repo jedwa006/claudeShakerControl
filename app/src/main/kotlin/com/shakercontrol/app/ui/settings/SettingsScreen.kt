@@ -42,6 +42,8 @@ fun SettingsScreen(
     val connectedDeviceName by viewModel.connectedDeviceName.collectAsStateWithLifecycle()
     val lastConnectedDevice by viewModel.lastConnectedDevice.collectAsStateWithLifecycle()
     val autoReconnectEnabled by viewModel.autoReconnectEnabled.collectAsStateWithLifecycle()
+    val lazyPollingEnabled by viewModel.lazyPollingEnabled.collectAsStateWithLifecycle()
+    val lazyPollingIdleTimeoutMinutes by viewModel.lazyPollingIdleTimeoutMinutes.collectAsStateWithLifecycle()
 
     SettingsScreenContent(
         controllerVersion = controllerVersion,
@@ -56,7 +58,11 @@ fun SettingsScreen(
         onReconnect = viewModel::reconnect,
         onForgetDevice = viewModel::forgetDevice,
         onAutoReconnectChanged = viewModel::setAutoReconnectEnabled,
-        onNavigateToDevices = onNavigateToDevices
+        onNavigateToDevices = onNavigateToDevices,
+        lazyPollingEnabled = lazyPollingEnabled,
+        lazyPollingIdleTimeoutMinutes = lazyPollingIdleTimeoutMinutes,
+        onLazyPollingEnabledChanged = viewModel::setLazyPollingEnabled,
+        onLazyPollingIdleTimeoutChanged = viewModel::setLazyPollingIdleTimeoutMinutes
     )
 }
 
@@ -74,10 +80,15 @@ private fun SettingsScreenContent(
     onReconnect: () -> Unit,
     onForgetDevice: () -> Unit,
     onAutoReconnectChanged: (Boolean) -> Unit,
-    onNavigateToDevices: () -> Unit
+    onNavigateToDevices: () -> Unit,
+    lazyPollingEnabled: Boolean = false,
+    lazyPollingIdleTimeoutMinutes: Int = 3,
+    onLazyPollingEnabledChanged: (Boolean) -> Unit = {},
+    onLazyPollingIdleTimeoutChanged: (Int) -> Unit = {}
 ) {
     var selectedTheme by remember { mutableStateOf("Dark") }
     var showControllerInfoDialog by remember { mutableStateOf(false) }
+    var showIdleTimeoutDropdown by remember { mutableStateOf(false) }
 
     // Controller build info popup dialog
     if (showControllerInfoDialog) {
@@ -145,6 +156,87 @@ private fun SettingsScreenContent(
                     Text("Export logs", style = MaterialTheme.typography.bodyLarge)
                     OutlinedButton(onClick = { /* TODO: Future */ }) {
                         Text("Export")
+                    }
+                }
+            }
+        }
+
+        // Lazy Polling section
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Lazy Polling",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Reduce PID polling frequency when system is idle",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = lazyPollingEnabled,
+                        onCheckedChange = onLazyPollingEnabledChanged,
+                        modifier = Modifier.testTag("LazyPollingSwitch")
+                    )
+                }
+
+                if (lazyPollingEnabled) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                    // Idle timeout dropdown
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Idle timeout", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                text = "Time before reducing polling rate",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Box {
+                            OutlinedButton(onClick = { showIdleTimeoutDropdown = true }) {
+                                Text(formatIdleTimeout(lazyPollingIdleTimeoutMinutes))
+                            }
+                            DropdownMenu(
+                                expanded = showIdleTimeoutDropdown,
+                                onDismissRequest = { showIdleTimeoutDropdown = false }
+                            ) {
+                                listOf(1, 2, 3, 5, 10, 15, 30, 60).forEach { minutes ->
+                                    DropdownMenuItem(
+                                        text = { Text(formatIdleTimeout(minutes)) },
+                                        onClick = {
+                                            onLazyPollingIdleTimeoutChanged(minutes)
+                                            showIdleTimeoutDropdown = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = MaterialTheme.shapes.small
+                    ) {
+                        Text(
+                            text = "Reduces coil whine from PID controllers when idle. Polling resumes at full speed during runs.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
                     }
                 }
             }
@@ -466,6 +558,13 @@ private fun DeviceSection(
             }
         }
     }
+}
+
+/**
+ * Format idle timeout for display.
+ */
+private fun formatIdleTimeout(minutes: Int): String {
+    return if (minutes == 1) "1 minute" else "$minutes minutes"
 }
 
 @Preview(widthDp = 800, heightDp = 600)

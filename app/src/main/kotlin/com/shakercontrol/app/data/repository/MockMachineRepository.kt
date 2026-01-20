@@ -583,4 +583,21 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
         _capabilityOverrides.value = null
         _systemStatus.value = _systemStatus.value.copy(capabilities = SubsystemCapabilities.DEFAULT)
     }
+
+    // Mock register storage for testing
+    private val mockRegisters = mutableMapOf<Pair<Int, Int>, Int>()
+
+    override suspend fun readRegisters(controllerId: Int, startAddress: Int, count: Int): Result<List<Int>> {
+        delay(100) // Simulate Modbus delay
+        val values = (0 until count).map { offset ->
+            mockRegisters[Pair(controllerId, startAddress + offset)] ?: 0
+        }
+        return Result.success(values)
+    }
+
+    override suspend fun writeRegister(controllerId: Int, address: Int, value: Int): Result<Unit> {
+        delay(100) // Simulate Modbus delay
+        mockRegisters[Pair(controllerId, address)] = value
+        return Result.success(Unit)
+    }
 }
