@@ -13,6 +13,7 @@ data class SystemStatus(
     val deviceName: String?,
     val rssiDbm: Int?,
     val firmwareVersion: String?,
+    val firmwareBuildId: String? = null,
     val protocolVersion: Int?,
     val capabilities: SubsystemCapabilities = SubsystemCapabilities.DEFAULT,
     val sessionLeaseMs: Int = DEFAULT_LEASE_MS,
@@ -64,6 +65,16 @@ data class SystemStatus(
                 rssi >= RSSI_FAIR -> SignalQuality.FAIR
                 else -> SignalQuality.POOR
             }
+        }
+
+    /**
+     * Full firmware version including build ID (e.g., "0.2.0+26011901").
+     */
+    val fullFirmwareVersion: String?
+        get() = when {
+            firmwareVersion == null -> null
+            firmwareBuildId != null -> "$firmwareVersion+$firmwareBuildId"
+            else -> firmwareVersion
         }
 
     companion object {

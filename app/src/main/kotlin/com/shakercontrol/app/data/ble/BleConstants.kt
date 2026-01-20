@@ -227,6 +227,12 @@ data class DeviceInfo(
     val firmwareVersionString: String
         get() = "$firmwareMajor.$firmwareMinor.$firmwarePatch"
 
+    val buildIdHex: String
+        get() = buildId.toString(16).padStart(8, '0')
+
+    val fullVersionString: String
+        get() = "$firmwareVersionString+$buildIdHex"
+
     companion object {
         fun parse(data: ByteArray): DeviceInfo? {
             if (data.size < 12) return null

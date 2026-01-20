@@ -163,6 +163,7 @@ class BleMachineRepository @Inject constructor(
                     val currentStatus = _systemStatus.value
                     _systemStatus.value = currentStatus.copy(
                         firmwareVersion = info.firmwareVersionString,
+                        firmwareBuildId = info.buildIdHex,
                         protocolVersion = info.protocolVersion
                     )
                 }

@@ -15,7 +15,8 @@ data class PidData(
     val isOutputActive: Boolean,
     val hasFault: Boolean,
     val ageMs: Int,  // How old the RS-485 reading is
-    val capabilityLevel: CapabilityLevel
+    val capabilityLevel: CapabilityLevel,
+    val alarmRelays: AlarmRelays = AlarmRelays.NONE  // AL1/AL2 relay outputs
 ) {
     val isStale: Boolean
         get() = ageMs > STALE_THRESHOLD_MS
@@ -23,9 +24,29 @@ data class PidData(
     val isOffline: Boolean
         get() = ageMs > OFFLINE_THRESHOLD_MS
 
+    /**
+     * True if any alarm relay (AL1 or AL2) is active.
+     */
+    val hasActiveAlarm: Boolean
+        get() = alarmRelays.al1 || alarmRelays.al2
+
     companion object {
         const val STALE_THRESHOLD_MS = 500
         const val OFFLINE_THRESHOLD_MS = 3000
+    }
+}
+
+/**
+ * Alarm relay outputs from PID controller.
+ * These are relay outputs on the PID controller itself (not the ESP32 relays).
+ * AL1/AL2 can be configured in the PID controller for various alarm conditions.
+ */
+data class AlarmRelays(
+    val al1: Boolean,  // Alarm 1 relay state
+    val al2: Boolean   // Alarm 2 relay state
+) {
+    companion object {
+        val NONE = AlarmRelays(al1 = false, al2 = false)
     }
 }
 
