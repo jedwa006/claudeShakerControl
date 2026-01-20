@@ -370,7 +370,8 @@ fun ControlsSection(
 }
 
 /**
- * PID tiles section on Run screen.
+ * Compact PID tiles section with responsive grid layout.
+ * Shows 1/2/3 columns based on controller count for optimal space usage.
  * Dynamically shows only controllers that are connected via RS-485.
  */
 @Composable
@@ -382,50 +383,63 @@ fun TemperaturesSection(
     // Filter to only show controllers that have capability level > NOT_PRESENT
     val visibleControllers = pidData.filter { it.capabilityLevel != CapabilityLevel.NOT_PRESENT }
 
-    Card(modifier = modifier) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+    Column(modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Temperatures",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (visibleControllers.isNotEmpty()) {
                 Text(
-                    text = "Temperatures",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold
+                    text = "${visibleControllers.size} PID${if (visibleControllers.size != 1) "s" else ""}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (visibleControllers.isNotEmpty()) {
-                    Text(
-                        text = "${visibleControllers.size} controller${if (visibleControllers.size != 1) "s" else ""}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
-            Spacer(modifier = Modifier.height(16.dp))
+        }
+        Spacer(modifier = Modifier.height(8.dp))
 
-            if (visibleControllers.isEmpty()) {
+        if (visibleControllers.isEmpty()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
                 Text(
                     text = "No temperature controllers connected",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp)
                 )
-            } else {
+            }
+        } else {
+            // Responsive grid: tiles side-by-side based on count
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 visibleControllers.forEach { pid ->
-                    PidTile(pid = pid, onClick = { onNavigateToPid(pid.controllerId) })
-                    if (pid != visibleControllers.last()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                    }
+                    CompactPidTile(
+                        pid = pid,
+                        onClick = { onNavigateToPid(pid.controllerId) },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
         }
     }
 }
 
+/**
+ * Compact stamp-style PID tile for grid layout.
+ * Shows essential info: name, PV/SV, and compact status indicators.
+ */
 @Composable
-private fun PidTile(
+private fun CompactPidTile(
     pid: PidData,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     // Pulsing border for error states
     val hasError = pid.isOffline || pid.hasProbeError
@@ -451,8 +465,7 @@ private fun PidTile(
     val borderWidth = if (hasError || hasWarning) 2.dp else 0.dp
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
             .then(
                 if (hasError || hasWarning) {
                     Modifier.border(borderWidth, borderColor, MaterialTheme.shapes.medium)
@@ -469,76 +482,161 @@ private fun PidTile(
             }
         )
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Title row with health LED and status badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "PID ${pid.controllerId} - ${pid.name}",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium
-                )
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Error/status badge
-                    if (pid.isOffline) {
-                        StatusBadge(text = "OFFLINE", color = SemanticColors.Alarm)
-                    } else if (pid.hasProbeError) {
-                        StatusBadge(text = pid.probeError.shortName, color = SemanticColors.Alarm)
-                    } else if (pid.isStale) {
-                        StatusBadge(text = "STALE", color = SemanticColors.Warning)
-                    }
-                    Icon(
-                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "Open details",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    // Health/comm status LED - shows data freshness
+                    LedIndicator(
+                        isOn = !pid.isOffline,
+                        size = 6.dp,
+                        onColor = when {
+                            pid.isOffline -> SemanticColors.Alarm
+                            pid.isStale -> SemanticColors.Warning
+                            else -> SemanticColors.Normal
+                        },
+                        isStale = pid.isStale,
+                        isPulsing = !pid.isOffline && !pid.isStale // Pulse when healthy
                     )
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Text("PV", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (pid.hasProbeError) {
-                        Text(
-                            pid.probeError.shortName,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = SemanticColors.Alarm
-                        )
-                    } else {
-                        Text(
-                            "${String.format("%.1f", pid.processValue)}°C",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = if (pid.isOffline) SemanticColors.Stale else Color.Unspecified
-                        )
-                    }
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("SV", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
-                        "${String.format("%.1f", pid.setpointValue)}°C",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = if (pid.isOffline) SemanticColors.Stale else Color.Unspecified
+                        text = pid.name,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
                     )
                 }
+                // Compact status indicator
+                if (pid.isOffline) {
+                    CompactStatusBadge(text = "OFF", color = SemanticColors.Alarm)
+                } else if (pid.hasProbeError) {
+                    CompactStatusBadge(text = pid.probeError.shortName, color = SemanticColors.Alarm)
+                } else if (pid.isStale) {
+                    CompactStatusBadge(text = "!", color = SemanticColors.Warning)
+                }
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            PidStatusLeds(
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // PV - large and prominent
+            if (pid.hasProbeError) {
+                Text(
+                    text = pid.probeError.shortName,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = SemanticColors.Alarm
+                )
+            } else {
+                Text(
+                    text = "${String.format("%.1f", pid.processValue)}°",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (pid.isOffline) SemanticColors.Stale else Color.Unspecified
+                )
+            }
+
+            // SV - smaller below
+            Text(
+                text = "→ ${String.format("%.1f", pid.setpointValue)}°",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (pid.isOffline) SemanticColors.Stale else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Compact LED row - just dots, no labels
+            CompactPidLeds(
                 isEnabled = pid.isEnabled,
                 isOutputActive = pid.isOutputActive,
                 hasFault = pid.hasFault || pid.hasProbeError,
                 isStale = pid.isStale,
                 al1Active = pid.alarmRelays.al1,
                 al2Active = pid.alarmRelays.al2
+            )
+        }
+    }
+}
+
+/**
+ * Compact status badge for tight spaces.
+ */
+@Composable
+private fun CompactStatusBadge(
+    text: String,
+    color: Color
+) {
+    Surface(
+        color = color.copy(alpha = 0.2f),
+        shape = MaterialTheme.shapes.extraSmall
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+        )
+    }
+}
+
+/**
+ * Compact LED row showing just colored dots without labels.
+ */
+@Composable
+private fun CompactPidLeds(
+    isEnabled: Boolean,
+    isOutputActive: Boolean,
+    hasFault: Boolean,
+    isStale: Boolean,
+    al1Active: Boolean,
+    al2Active: Boolean
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LedIndicator(
+            isOn = isEnabled,
+            size = 8.dp,
+            onColor = SemanticColors.Enabled,
+            isStale = isStale
+        )
+        LedIndicator(
+            isOn = isOutputActive,
+            size = 8.dp,
+            onColor = SemanticColors.OutputActive,
+            isPulsing = true,
+            isStale = isStale
+        )
+        LedIndicator(
+            isOn = hasFault,
+            size = 8.dp,
+            onColor = SemanticColors.Fault,
+            isStale = isStale
+        )
+        if (al1Active || al2Active) {
+            LedIndicator(
+                isOn = al1Active,
+                size = 8.dp,
+                onColor = SemanticColors.Alarm,
+                isPulsing = al1Active,
+                isStale = isStale
+            )
+            LedIndicator(
+                isOn = al2Active,
+                size = 8.dp,
+                onColor = SemanticColors.Alarm,
+                isPulsing = al2Active,
+                isStale = isStale
             )
         }
     }
@@ -564,26 +662,25 @@ private fun StatusBadge(
 }
 
 /**
- * Indicator bank section.
+ * Compact indicator bank section.
+ * Shows system interlock status in a single row for space efficiency.
+ * Health indicators (BLE/MCU) are now in the StatusStrip.
  */
 @Composable
 fun IndicatorsSection(
     interlockStatus: InterlockStatus,
-    mcuHeartbeatStatus: HeartbeatStatus,
-    mcuHeartbeatAgeMs: Long,
-    connectionState: ConnectionState,
     modifier: Modifier = Modifier
 ) {
     Card(modifier = modifier) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
             Text(
-                text = "Indicators",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
+                text = "System Status",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // System indicators
+            // All indicators in one row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
@@ -592,42 +689,8 @@ fun IndicatorsSection(
                 IndicatorItem("LN2", interlockStatus.isLn2Present)
                 IndicatorItem("E-stop", !interlockStatus.isEStopActive, invertColor = true)
                 IndicatorItem("Power", interlockStatus.isPowerEnabled)
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                IndicatorItem("Heater", interlockStatus.isHeatersEnabled)
+                IndicatorItem("Heat", interlockStatus.isHeatersEnabled)
                 IndicatorItem("Motor", interlockStatus.isMotorEnabled)
-                IndicatorItem("Fault", false)
-                Spacer(modifier = Modifier.width(48.dp))
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Health section
-            Text(
-                text = "Health",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                HealthIndicator(
-                    label = "BLE link",
-                    status = if (connectionState == ConnectionState.LIVE) HeartbeatStatus.OK else HeartbeatStatus.MISSING
-                )
-                HealthIndicator(
-                    label = "MCU heartbeat",
-                    status = mcuHeartbeatStatus,
-                    ageMs = mcuHeartbeatAgeMs
-                )
             }
         }
     }
@@ -651,38 +714,10 @@ private fun IndicatorItem(
     }
 }
 
-@Composable
-private fun HealthIndicator(
-    label: String,
-    status: HeartbeatStatus,
-    ageMs: Long? = null
-) {
-    val color = when (status) {
-        HeartbeatStatus.OK -> SemanticColors.Normal
-        HeartbeatStatus.STALE -> SemanticColors.Warning
-        HeartbeatStatus.MISSING -> SemanticColors.Alarm
-    }
-
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        LedIndicator(
-            isOn = status != HeartbeatStatus.MISSING,
-            size = 16.dp,
-            onColor = color
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall)
-        if (ageMs != null && status != HeartbeatStatus.MISSING) {
-            Text(
-                if (status == HeartbeatStatus.STALE) "Stale ${ageMs / 1000.0}s" else "${ageMs}ms",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
 /**
- * Manual controls section.
+ * Compact manual controls bar.
+ * Shows common controls as icon buttons in a horizontal row.
+ * Service mode controls appear when enabled.
  */
 @Composable
 fun ManualControlsSection(
@@ -690,55 +725,112 @@ fun ManualControlsSection(
     modifier: Modifier = Modifier
 ) {
     Card(modifier = modifier) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = "Manual controls",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Placeholder controls
-            ManualControlRow(label = "Lights", enabled = true)
-            ManualControlRow(label = "Door lock", enabled = true)
-
-            if (isServiceMode) {
-                Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Normal controls - always visible
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = "SERVICE",
+                    text = "Controls",
                     style = MaterialTheme.typography.labelMedium,
-                    color = SemanticColors.Warning
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                ManualControlRow(label = "Heater override", enabled = true)
-                ManualControlRow(label = "Motor override", enabled = true)
+                CompactToggleButton(
+                    label = "Lights",
+                    icon = Icons.Default.Lightbulb
+                )
+                CompactToggleButton(
+                    label = "Door",
+                    icon = Icons.Default.Lock
+                )
+            }
+
+            // Service mode controls
+            if (isServiceMode) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        color = SemanticColors.Warning.copy(alpha = 0.2f),
+                        shape = MaterialTheme.shapes.small
+                    ) {
+                        Text(
+                            text = "SVC",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SemanticColors.Warning,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                    CompactToggleButton(
+                        label = "Heat",
+                        icon = Icons.Default.Whatshot,
+                        warningColor = true
+                    )
+                    CompactToggleButton(
+                        label = "Motor",
+                        icon = Icons.Default.Settings,
+                        warningColor = true
+                    )
+                }
             }
         }
     }
 }
 
+/**
+ * Compact toggle button with icon and label.
+ */
 @Composable
-private fun ManualControlRow(
+private fun CompactToggleButton(
     label: String,
-    enabled: Boolean
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    warningColor: Boolean = false
 ) {
     var isOn by remember { mutableStateOf(false) }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    val backgroundColor = when {
+        isOn && warningColor -> SemanticColors.Warning.copy(alpha = 0.3f)
+        isOn -> SemanticColors.Normal.copy(alpha = 0.3f)
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    }
+
+    val contentColor = when {
+        isOn && warningColor -> SemanticColors.Warning
+        isOn -> SemanticColors.Normal
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Surface(
+        onClick = { isOn = !isOn },
+        color = backgroundColor,
+        shape = MaterialTheme.shapes.small
     ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
-        Switch(
-            checked = isOn,
-            onCheckedChange = { isOn = it },
-            enabled = enabled
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                modifier = Modifier.size(16.dp),
+                tint = contentColor
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = contentColor
+            )
+        }
     }
 }
 

@@ -100,6 +100,19 @@ fun RunScreen(
     }
 }
 
+/**
+ * Compact Run screen layout designed to fit without scrolling.
+ * Layout:
+ * ┌─────────────────────┬────────────────────────────┐
+ * │  Recipe Card        │  PID1  │  PID2  │  PID3   │
+ * │  (Mill/Hold/Cycles) │  Stamp │  Stamp │  Stamp  │
+ * ├─────────────────────┼────────────────────────────┤
+ * │  Controls Card      │  Indicators + I/O (svc)   │
+ * │  [Start/Pause/Stop] │                            │
+ * └─────────────────────┴────────────────────────────┘
+ * │  Manual Controls Bar (full width)                │
+ * └──────────────────────────────────────────────────┘
+ */
 @Composable
 private fun RunScreenContent(
     systemStatus: SystemStatus,
@@ -120,67 +133,75 @@ private fun RunScreenContent(
     onNavigateToIo: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Left column - Recipe + Controls
-        Column(
+        // Main content area - two columns
+        Row(
             modifier = Modifier
-                .weight(0.5f)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .weight(1f)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            RecipeSection(
-                recipe = recipe,
-                runProgress = runProgress,
-                isRunning = systemStatus.machineState.isOperating,
-                onRecipeChange = onRecipeChange
-            )
+            // Left column - Recipe + Controls
+            Column(
+                modifier = Modifier.weight(0.45f),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                RecipeSection(
+                    recipe = recipe,
+                    runProgress = runProgress,
+                    isRunning = systemStatus.machineState.isOperating,
+                    onRecipeChange = onRecipeChange,
+                    modifier = Modifier.weight(1f)
+                )
 
-            ControlsSection(
-                machineState = systemStatus.machineState,
-                connectionState = systemStatus.connectionState,
-                isExecutingCommand = isExecutingCommand,
-                startGating = startGating,
-                onStart = onStart,
-                onPause = onPause,
-                onResume = onResume,
-                onStop = onStop
-            )
+                ControlsSection(
+                    machineState = systemStatus.machineState,
+                    connectionState = systemStatus.connectionState,
+                    isExecutingCommand = isExecutingCommand,
+                    startGating = startGating,
+                    onStart = onStart,
+                    onPause = onPause,
+                    onResume = onResume,
+                    onStop = onStop
+                )
+            }
 
-            ManualControlsSection(
-                isServiceMode = systemStatus.isServiceModeEnabled
-            )
+            // Right column - PIDs + Indicators (+ I/O in service mode)
+            Column(
+                modifier = Modifier.weight(0.55f),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // PID temperatures - compact grid
+                TemperaturesSection(
+                    pidData = pidData,
+                    onNavigateToPid = onNavigateToPid
+                )
+
+                // System indicators - compact row
+                IndicatorsSection(
+                    interlockStatus = interlockStatus
+                )
+
+                // I/O section - only visible in service mode
+                if (systemStatus.isServiceModeEnabled) {
+                    IoSection(
+                        ioStatus = ioStatus,
+                        isSimulationEnabled = isSimulationEnabled,
+                        onClick = onNavigateToIo
+                    )
+                }
+            }
         }
 
-        // Right column - PIDs + Indicators
-        Column(
-            modifier = Modifier
-                .weight(0.5f)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            TemperaturesSection(
-                pidData = pidData,
-                onNavigateToPid = onNavigateToPid
-            )
-
-            IoSection(
-                ioStatus = ioStatus,
-                isSimulationEnabled = isSimulationEnabled,
-                onClick = onNavigateToIo
-            )
-
-            IndicatorsSection(
-                interlockStatus = interlockStatus,
-                mcuHeartbeatStatus = systemStatus.mcuHeartbeatStatus,
-                mcuHeartbeatAgeMs = systemStatus.mcuHeartbeatAgeMs,
-                connectionState = systemStatus.connectionState
-            )
-        }
+        // Bottom bar - Manual controls (full width)
+        ManualControlsSection(
+            isServiceMode = systemStatus.isServiceModeEnabled
+        )
     }
 }
 
@@ -258,6 +279,58 @@ private fun RunScreenPreview() {
                     relayOutputs = 0b00010010    // Channels 2, 5 high
                 ),
                 isSimulationEnabled = false,
+                isExecutingCommand = false,
+                startGating = StartGatingResult.OK,
+                onRecipeChange = {},
+                onStart = {},
+                onPause = {},
+                onResume = {},
+                onStop = {},
+                onNavigateToPid = {},
+                onNavigateToIo = {}
+            )
+        }
+    }
+}
+
+@Preview(widthDp = 1200, heightDp = 700)
+@Composable
+private fun RunScreenServiceModePreview() {
+    ShakerControlTheme {
+        Surface {
+            RunScreenContent(
+                systemStatus = SystemStatus(
+                    connectionState = ConnectionState.LIVE,
+                    machineState = MachineState.READY,
+                    mcuHeartbeatAgeMs = 120,
+                    bleHeartbeatAgeMs = 80,
+                    alarmSummary = AlarmSummary(0, 0, null),
+                    isServiceModeEnabled = true,  // Service mode enabled
+                    deviceName = "SYS-CTRL-001",
+                    rssiDbm = -58,
+                    firmwareVersion = "1.0.0",
+                    protocolVersion = 1
+                ),
+                recipe = Recipe.DEFAULT,
+                runProgress = null,
+                pidData = listOf(
+                    PidData(1, "LN2 (Cold)", -180.5f, -185.0f, 0.0f, PidMode.AUTO, true, false, false, 120, CapabilityLevel.OPTIONAL),
+                    PidData(2, "Axle bearings", 25.4f, 30.0f, 45.6f, PidMode.AUTO, true, true, false, 120, CapabilityLevel.REQUIRED),
+                    PidData(3, "Orbital bearings", 28.1f, 30.0f, 32.1f, PidMode.AUTO, true, true, false, 120, CapabilityLevel.REQUIRED)
+                ),
+                interlockStatus = InterlockStatus(
+                    isEStopActive = false,
+                    isDoorLocked = true,
+                    isLn2Present = true,
+                    isPowerEnabled = true,
+                    isHeatersEnabled = true,
+                    isMotorEnabled = true
+                ),
+                ioStatus = IoStatus(
+                    digitalInputs = 0b00101101,
+                    relayOutputs = 0b00010010
+                ),
+                isSimulationEnabled = true,
                 isExecutingCommand = false,
                 startGating = StartGatingResult.OK,
                 onRecipeChange = {},
