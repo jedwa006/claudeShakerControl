@@ -1,5 +1,6 @@
 package com.shakercontrol.app.ui.io
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -12,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -358,22 +360,38 @@ private fun RelayOutputControl(
     isExecuting: Boolean,
     onToggle: (Boolean) -> Unit
 ) {
+    // Pulsing animation for active relay indicator
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.7f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        // Channel label
         Text(
             text = "RO$channel",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        // Relay status indicator
+        // Status indicator LED - shows current state with pulse when ON
         Box(
             modifier = Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(if (isOn) StatusAlarm else Color.DarkGray),
+                .background(
+                    if (isOn) StatusNormal.copy(alpha = pulseAlpha)
+                    else Color.DarkGray
+                ),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -384,22 +402,24 @@ private fun RelayOutputControl(
             )
         }
 
-        // Toggle button
-        Button(
+        // Action button - labeled to indicate it's an action
+        OutlinedButton(
             onClick = { onToggle(!isOn) },
             enabled = canControl && !isExecuting,
-            modifier = Modifier.width(64.dp),
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (isOn)
+            modifier = Modifier.width(72.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = if (isOn)
                     MaterialTheme.colorScheme.error
                 else
                     StatusNormal
-            )
+            ),
+            border = ButtonDefaults.outlinedButtonBorder(enabled = canControl && !isExecuting)
         ) {
             Text(
-                text = if (isOn) "OFF" else "ON",
-                style = MaterialTheme.typography.labelSmall
+                text = if (isOn) "Turn OFF" else "Turn ON",
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1
             )
         }
     }
