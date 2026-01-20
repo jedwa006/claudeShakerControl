@@ -110,6 +110,8 @@ Use `adb shell uiautomator dump` to get fresh coordinates if layout changes.
 - OPEN_SESSION, KEEPALIVE, telemetry all working
 - 101 unit tests passing
 - I/O Control screen implemented with DI/RO visualization
+- RS-485 PID controller integration prepared (awaiting firmware)
+- Firmware v0.2.0+26011901 verified on device
 
 ### Stage 8 Progress (In Progress)
 **Completed:**
@@ -120,6 +122,12 @@ Use `adb shell uiautomator dump` to get fresh coordinates if layout changes.
 - Navigation architecture: top-level pages (drawer) don't show back button
 - Connect button on Home now navigates to Devices when disconnected
 - Back button visual shift fixed (48dp fixed box with crossfade)
+- **Firmware version display**: Full version with build ID (e.g., "0.2.0+26011901")
+- **PID controller status in Diagnostics**: Shows RS-485 controller connection status (Online/Stale/Offline)
+- **Capability table in Diagnostics**: Color-coded chips (Required/Optional/Not installed)
+- **Dynamic PID tiles**: Run screen shows only connected controllers with count badge
+- **AL1/AL2 alarm relay support**: PidData model and UI indicators ready for alarm states
+- **IoScreen UI improvements**: Pulsing green indicators for active relays, clearer button labels
 
 **Remaining:**
 1. Recipe persistence (save/load recipes)
@@ -129,6 +137,15 @@ Use `adb shell uiautomator dump` to get fresh coordinates if layout changes.
 ### Known Issues
 - Connect popup on first start doesn't initiate connect sequence (must use Devices screen)
 - Relay commands show "NO ARGS" error (firmware needs SET_RELAY handler - see FIRMWARE_AGENT_PROMPT.md)
+
+### RS-485 Integration Status
+The app is ready to receive RS-485 PID controller data from firmware:
+- **Telemetry parsing**: Expects `controller_count` and per-controller blocks
+- **AL1/AL2 bits**: Ready to display alarm relay states when firmware provides them
+- **Dynamic display**: Only shows controllers with capability > NOT_PRESENT
+- **Start gating**: Correctly blocks start when Required controllers are offline
+
+Currently testing with PID 3 (LN2 line) - awaiting firmware for PID 1 (Axle) and PID 2 (Orbital).
 
 ### Implementation Checklist Progress
 From `docs/MCU_docs/95-implementation-checklist.md`:
