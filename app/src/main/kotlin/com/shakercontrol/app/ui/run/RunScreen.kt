@@ -106,11 +106,11 @@ fun RunScreen(
  * ┌─────────────────────┬────────────────────────────┐
  * │  Recipe Card        │  PID1  │  PID2  │  PID3   │
  * │  (Mill/Hold/Cycles) │  Stamp │  Stamp │  Stamp  │
- * ├─────────────────────┼────────────────────────────┤
- * │  Controls Card      │  Indicators + I/O (svc)   │
+ * ├─────────────────────┤                            │
+ * │  Controls Card      │  (I/O section in svc mode) │
  * │  [Start/Pause/Stop] │                            │
  * └─────────────────────┴────────────────────────────┘
- * │  Manual Controls Bar (full width)                │
+ * │ 💡Lights 🔒Door | Door LN2 E-stop Pwr Heat Motor │
  * └──────────────────────────────────────────────────┘
  */
 @Composable
@@ -171,7 +171,7 @@ private fun RunScreenContent(
                 )
             }
 
-            // Right column - PIDs + Indicators (+ I/O in service mode)
+            // Right column - PIDs (+ I/O in service mode)
             Column(
                 modifier = Modifier.weight(0.55f),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -180,11 +180,6 @@ private fun RunScreenContent(
                 TemperaturesSection(
                     pidData = pidData,
                     onNavigateToPid = onNavigateToPid
-                )
-
-                // System indicators - compact row
-                IndicatorsSection(
-                    interlockStatus = interlockStatus
                 )
 
                 // I/O section - only visible in service mode
@@ -198,8 +193,9 @@ private fun RunScreenContent(
             }
         }
 
-        // Bottom bar - Manual controls (full width)
-        ManualControlsSection(
+        // Bottom dashboard bar - Controls + System Status indicators
+        DashboardBar(
+            interlockStatus = interlockStatus,
             isServiceMode = systemStatus.isServiceModeEnabled
         )
     }

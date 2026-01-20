@@ -715,12 +715,13 @@ private fun IndicatorItem(
 }
 
 /**
- * Compact manual controls bar.
- * Shows common controls as icon buttons in a horizontal row.
- * Service mode controls appear when enabled.
+ * Combined dashboard bar with manual controls and system status indicators.
+ * Left side: Manual controls (Lights, Door, +Heat/Motor in service mode)
+ * Right side: System interlock status indicators
  */
 @Composable
-fun ManualControlsSection(
+fun DashboardBar(
+    interlockStatus: InterlockStatus,
     isServiceMode: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -728,36 +729,30 @@ fun ManualControlsSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Normal controls - always visible
+            // Left side - Manual controls
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Controls",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                CompactToggleButton(
+                DashboardToggleButton(
                     label = "Lights",
                     icon = Icons.Default.Lightbulb
                 )
-                CompactToggleButton(
+                DashboardToggleButton(
                     label = "Door",
                     icon = Icons.Default.Lock
                 )
-            }
 
-            // Service mode controls
-            if (isServiceMode) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                // Service mode controls
+                if (isServiceMode) {
+                    VerticalDivider(
+                        modifier = Modifier.height(28.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
                     Surface(
                         color = SemanticColors.Warning.copy(alpha = 0.2f),
                         shape = MaterialTheme.shapes.small
@@ -767,22 +762,110 @@ fun ManualControlsSection(
                             style = MaterialTheme.typography.labelSmall,
                             color = SemanticColors.Warning,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
                         )
                     }
-                    CompactToggleButton(
+                    DashboardToggleButton(
                         label = "Heat",
                         icon = Icons.Default.Whatshot,
                         warningColor = true
                     )
-                    CompactToggleButton(
+                    DashboardToggleButton(
                         label = "Motor",
                         icon = Icons.Default.Settings,
                         warningColor = true
                     )
                 }
             }
+
+            // Right side - System status indicators
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                DashboardIndicator("Door", interlockStatus.isDoorLocked)
+                DashboardIndicator("LN2", interlockStatus.isLn2Present)
+                DashboardIndicator("E-stop", !interlockStatus.isEStopActive, invertColor = true)
+                DashboardIndicator("Power", interlockStatus.isPowerEnabled)
+                DashboardIndicator("Heat", interlockStatus.isHeatersEnabled)
+                DashboardIndicator("Motor", interlockStatus.isMotorEnabled)
+            }
         }
+    }
+}
+
+/**
+ * Larger toggle button for dashboard bar.
+ */
+@Composable
+private fun DashboardToggleButton(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    warningColor: Boolean = false
+) {
+    var isOn by remember { mutableStateOf(false) }
+
+    val backgroundColor = when {
+        isOn && warningColor -> SemanticColors.Warning.copy(alpha = 0.3f)
+        isOn -> SemanticColors.Normal.copy(alpha = 0.3f)
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    }
+
+    val contentColor = when {
+        isOn && warningColor -> SemanticColors.Warning
+        isOn -> SemanticColors.Normal
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Surface(
+        onClick = { isOn = !isOn },
+        color = backgroundColor,
+        shape = MaterialTheme.shapes.small
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                modifier = Modifier.size(20.dp),
+                tint = contentColor
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = contentColor
+            )
+        }
+    }
+}
+
+/**
+ * Compact indicator for dashboard bar (horizontal layout with LED and label).
+ */
+@Composable
+private fun DashboardIndicator(
+    label: String,
+    isOn: Boolean,
+    invertColor: Boolean = false
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LedIndicator(
+            isOn = isOn,
+            size = 10.dp,
+            onColor = if (invertColor && !isOn) SemanticColors.Alarm else SemanticColors.OutputActive,
+            offColor = if (invertColor) SemanticColors.Normal else SemanticColors.OutputInactive
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
