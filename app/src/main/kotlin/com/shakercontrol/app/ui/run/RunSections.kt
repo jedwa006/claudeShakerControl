@@ -486,18 +486,35 @@ private fun CompactPidTile(
             modifier = Modifier.padding(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Title row with status badge
+            // Title row with health LED and status badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = pid.name,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Health/comm status LED - shows data freshness
+                    LedIndicator(
+                        isOn = !pid.isOffline,
+                        size = 6.dp,
+                        onColor = when {
+                            pid.isOffline -> SemanticColors.Alarm
+                            pid.isStale -> SemanticColors.Warning
+                            else -> SemanticColors.Normal
+                        },
+                        isStale = pid.isStale,
+                        isPulsing = !pid.isOffline && !pid.isStale // Pulse when healthy
+                    )
+                    Text(
+                        text = pid.name,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
+                    )
+                }
                 // Compact status indicator
                 if (pid.isOffline) {
                     CompactStatusBadge(text = "OFF", color = SemanticColors.Alarm)

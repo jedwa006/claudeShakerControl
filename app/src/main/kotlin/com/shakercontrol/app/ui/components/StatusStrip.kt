@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -337,12 +338,23 @@ private fun McuHeartbeatChip(
         backgroundColor = backgroundColor,
         contentColor = contentColor,
         icon = {
+            // Fixed-size container prevents layout shift during pulse animation
             Box(
-                modifier = Modifier
-                    .size((10 * pulseScale).dp)
-                    .clip(CircleShape)
-                    .background(contentColor.copy(alpha = pulseAlpha))
-            )
+                modifier = Modifier.size(14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .graphicsLayer {
+                            scaleX = pulseScale
+                            scaleY = pulseScale
+                            alpha = pulseAlpha
+                        }
+                        .clip(CircleShape)
+                        .background(contentColor)
+                )
+            }
         }
     )
 }
