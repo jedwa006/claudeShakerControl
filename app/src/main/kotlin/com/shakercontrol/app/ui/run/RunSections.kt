@@ -1,5 +1,7 @@
 package com.shakercontrol.app.ui.run
 
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
@@ -10,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
@@ -424,12 +427,46 @@ private fun PidTile(
     pid: PidData,
     onClick: () -> Unit
 ) {
+    // Pulsing border for error states
+    val hasError = pid.isOffline || pid.hasProbeError
+    val hasWarning = pid.isStale && !hasError
+
+    val infiniteTransition = rememberInfiniteTransition(label = "error_pulse")
+    val borderAlpha by infiniteTransition.animateFloat(
+        initialValue = if (hasError) 1f else 0.5f,
+        targetValue = if (hasError) 0.3f else 0.5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "border_alpha"
+    )
+
+    val borderColor = when {
+        hasError -> SemanticColors.Alarm.copy(alpha = borderAlpha)
+        hasWarning -> SemanticColors.Warning.copy(alpha = 0.7f)
+        else -> Color.Transparent
+    }
+
+    val borderWidth = if (hasError || hasWarning) 2.dp else 0.dp
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .then(
+                if (hasError || hasWarning) {
+                    Modifier.border(borderWidth, borderColor, MaterialTheme.shapes.medium)
+                } else {
+                    Modifier
+                }
+            )
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = when {
+                hasError -> SemanticColors.Alarm.copy(alpha = 0.1f)
+                hasWarning -> SemanticColors.Warning.copy(alpha = 0.1f)
+                else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            }
         )
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -443,11 +480,24 @@ private fun PidTile(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Medium
                 )
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = "Open details",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Error/status badge
+                    if (pid.isOffline) {
+                        StatusBadge(text = "OFFLINE", color = SemanticColors.Alarm)
+                    } else if (pid.hasProbeError) {
+                        StatusBadge(text = pid.probeError.shortName, color = SemanticColors.Alarm)
+                    } else if (pid.isStale) {
+                        StatusBadge(text = "STALE", color = SemanticColors.Warning)
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = "Open details",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(8.dp))
             Row(
@@ -456,17 +506,28 @@ private fun PidTile(
             ) {
                 Column {
                     Text("PV", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(
-                        "${String.format("%.1f", pid.processValue)}°C",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
-                    )
+                    if (pid.hasProbeError) {
+                        Text(
+                            pid.probeError.shortName,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = SemanticColors.Alarm
+                        )
+                    } else {
+                        Text(
+                            "${String.format("%.1f", pid.processValue)}°C",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (pid.isOffline) SemanticColors.Stale else Color.Unspecified
+                        )
+                    }
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("SV", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
                         "${String.format("%.1f", pid.setpointValue)}°C",
-                        style = MaterialTheme.typography.titleLarge
+                        style = MaterialTheme.typography.titleLarge,
+                        color = if (pid.isOffline) SemanticColors.Stale else Color.Unspecified
                     )
                 }
             }
@@ -474,12 +535,31 @@ private fun PidTile(
             PidStatusLeds(
                 isEnabled = pid.isEnabled,
                 isOutputActive = pid.isOutputActive,
-                hasFault = pid.hasFault,
+                hasFault = pid.hasFault || pid.hasProbeError,
                 isStale = pid.isStale,
                 al1Active = pid.alarmRelays.al1,
                 al2Active = pid.alarmRelays.al2
             )
         }
+    }
+}
+
+@Composable
+private fun StatusBadge(
+    text: String,
+    color: Color
+) {
+    Surface(
+        color = color.copy(alpha = 0.2f),
+        shape = MaterialTheme.shapes.small
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        )
     }
 }
 

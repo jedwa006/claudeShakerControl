@@ -95,9 +95,9 @@ private fun PidDetailContent(
     modifier: Modifier = Modifier
 ) {
     val pidNames = mapOf(
-        1 to "Axle bearings",
-        2 to "Orbital bearings",
-        3 to "LN2 line"
+        1 to "LN2 (Cold)",
+        2 to "Axle bearings",
+        3 to "Orbital bearings"
     )
 
     val isConnected = connectionState == ConnectionState.LIVE

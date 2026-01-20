@@ -430,9 +430,9 @@ private fun TemperaturesCardPreview() {
     ShakerControlTheme {
         TemperaturesCard(
             pidData = listOf(
-                PidData(1, "Axle bearings", 25.4f, 30.0f, 45.6f, PidMode.AUTO, true, true, false, 120, CapabilityLevel.REQUIRED),
-                PidData(2, "Orbital bearings", 28.1f, 30.0f, 32.1f, PidMode.AUTO, true, false, false, 120, CapabilityLevel.REQUIRED),
-                PidData(3, "LN2 line", -180.5f, -185.0f, 0.0f, PidMode.AUTO, true, false, false, 3500, CapabilityLevel.OPTIONAL)
+                PidData(1, "LN2 (Cold)", -180.5f, -185.0f, 0.0f, PidMode.AUTO, true, false, false, 3500, CapabilityLevel.OPTIONAL),
+                PidData(2, "Axle bearings", 25.4f, 30.0f, 45.6f, PidMode.AUTO, true, true, false, 120, CapabilityLevel.REQUIRED),
+                PidData(3, "Orbital bearings", 28.1f, 30.0f, 32.1f, PidMode.AUTO, true, false, false, 120, CapabilityLevel.REQUIRED)
             ),
             onPidClick = {}
         )

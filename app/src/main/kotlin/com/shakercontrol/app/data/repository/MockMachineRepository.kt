@@ -66,6 +66,19 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
     private fun createMockPidData() = listOf(
         PidData(
             controllerId = 1,
+            name = "LN2 (Cold)",
+            processValue = -180.5f,
+            setpointValue = -185.0f,
+            outputPercent = 0.0f,
+            mode = PidMode.AUTO,
+            isEnabled = true,
+            isOutputActive = false,
+            hasFault = false,
+            ageMs = 120,
+            capabilityLevel = CapabilityLevel.OPTIONAL
+        ),
+        PidData(
+            controllerId = 2,
             name = "Axle bearings",
             processValue = 25.4f,
             setpointValue = 30.0f,
@@ -78,7 +91,7 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
             capabilityLevel = CapabilityLevel.REQUIRED
         ),
         PidData(
-            controllerId = 2,
+            controllerId = 3,
             name = "Orbital bearings",
             processValue = 28.1f,
             setpointValue = 30.0f,
@@ -89,19 +102,6 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
             hasFault = false,
             ageMs = 120,
             capabilityLevel = CapabilityLevel.REQUIRED
-        ),
-        PidData(
-            controllerId = 3,
-            name = "LN2 line",
-            processValue = -180.5f,
-            setpointValue = -185.0f,
-            outputPercent = 0.0f,
-            mode = PidMode.AUTO,
-            isEnabled = true,
-            isOutputActive = false,
-            hasFault = false,
-            ageMs = 120,
-            capabilityLevel = CapabilityLevel.OPTIONAL
         )
     )
 
@@ -478,5 +478,33 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
             val current = _ioStatus.value
             _ioStatus.value = current.copy(digitalInputs = simulatedInputs)
         }
+    }
+
+    // Capability overrides
+    private val _capabilityOverrides = MutableStateFlow<SubsystemCapabilities?>(null)
+    override val capabilityOverrides: StateFlow<SubsystemCapabilities?> = _capabilityOverrides.asStateFlow()
+
+    override suspend fun setCapabilityOverride(subsystem: String, level: CapabilityLevel) {
+        val current = _capabilityOverrides.value ?: SubsystemCapabilities.DEFAULT
+
+        val updated = when (subsystem) {
+            "pid1" -> current.copy(pid1 = level)
+            "pid2" -> current.copy(pid2 = level)
+            "pid3" -> current.copy(pid3 = level)
+            "ln2Valve" -> current.copy(ln2Valve = level)
+            "doorActuator" -> current.copy(doorActuator = level)
+            "doorSwitch" -> current.copy(doorSwitch = level)
+            "relayInternal" -> current.copy(relayInternal = level)
+            "relayExternal" -> current.copy(relayExternal = level)
+            else -> return
+        }
+
+        _capabilityOverrides.value = updated
+        _systemStatus.value = _systemStatus.value.copy(capabilities = updated)
+    }
+
+    override suspend fun clearCapabilityOverrides() {
+        _capabilityOverrides.value = null
+        _systemStatus.value = _systemStatus.value.copy(capabilities = SubsystemCapabilities.DEFAULT)
     }
 }

@@ -6,8 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,11 +34,15 @@ fun DiagnosticsScreen(
     val systemStatus by viewModel.systemStatus.collectAsStateWithLifecycle()
     val pidData by viewModel.pidData.collectAsStateWithLifecycle()
     val isServiceMode by viewModel.isServiceMode.collectAsStateWithLifecycle()
+    val hasOverrides by viewModel.hasCapabilityOverrides.collectAsStateWithLifecycle()
 
     DiagnosticsContent(
         systemStatus = systemStatus,
         pidData = pidData,
-        isServiceMode = isServiceMode
+        isServiceMode = isServiceMode,
+        hasCapabilityOverrides = hasOverrides,
+        onCapabilityChange = { subsystem, level -> viewModel.setCapabilityOverride(subsystem, level) },
+        onClearOverrides = { viewModel.clearCapabilityOverrides() }
     )
 }
 
@@ -47,7 +50,10 @@ fun DiagnosticsScreen(
 private fun DiagnosticsContent(
     systemStatus: SystemStatus,
     pidData: List<PidData> = emptyList(),
-    isServiceMode: Boolean = false
+    isServiceMode: Boolean = false,
+    hasCapabilityOverrides: Boolean = false,
+    onCapabilityChange: (String, CapabilityLevel) -> Unit = { _, _ -> },
+    onClearOverrides: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -141,25 +147,55 @@ private fun DiagnosticsContent(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold
                     )
-                    if (isServiceMode) {
-                        Text(
-                            text = "Service Mode",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = StatusWarning
-                        )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (hasCapabilityOverrides) {
+                            Surface(
+                                color = StatusWarning.copy(alpha = 0.2f),
+                                shape = MaterialTheme.shapes.small
+                            ) {
+                                Text(
+                                    text = "OVERRIDE",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = StatusWarning,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        if (isServiceMode) {
+                            Text(
+                                text = "Tap to edit",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = StatusWarning
+                            )
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
 
                 val caps = systemStatus.capabilities
-                CapabilityRow("PID 1 (Axle)", caps.pid1, isServiceMode)
-                CapabilityRow("PID 2 (Orbital)", caps.pid2, isServiceMode)
-                CapabilityRow("PID 3 (LN2)", caps.pid3, isServiceMode)
-                CapabilityRow("LN2 Valve", caps.ln2Valve, isServiceMode)
-                CapabilityRow("Door Actuator", caps.doorActuator, isServiceMode)
-                CapabilityRow("Door Switch", caps.doorSwitch, isServiceMode)
-                CapabilityRow("Internal Relays", caps.relayInternal, isServiceMode)
-                CapabilityRow("External Relays (RS-485)", caps.relayExternal, isServiceMode)
+                CapabilityRow("PID 1 (LN2 Cold)", "pid1", caps.pid1, isServiceMode, onCapabilityChange)
+                CapabilityRow("PID 2 (Axle)", "pid2", caps.pid2, isServiceMode, onCapabilityChange)
+                CapabilityRow("PID 3 (Orbital)", "pid3", caps.pid3, isServiceMode, onCapabilityChange)
+                CapabilityRow("LN2 Valve", "ln2Valve", caps.ln2Valve, isServiceMode, onCapabilityChange)
+                CapabilityRow("Door Actuator", "doorActuator", caps.doorActuator, isServiceMode, onCapabilityChange)
+                CapabilityRow("Door Switch", "doorSwitch", caps.doorSwitch, isServiceMode, onCapabilityChange)
+                CapabilityRow("Internal Relays", "relayInternal", caps.relayInternal, isServiceMode, onCapabilityChange)
+                CapabilityRow("External Relays (RS-485)", "relayExternal", caps.relayExternal, isServiceMode, onCapabilityChange)
+
+                // Reset button
+                if (hasCapabilityOverrides && isServiceMode) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedButton(
+                        onClick = onClearOverrides,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Reset to Defaults")
+                    }
+                }
             }
         }
     }
@@ -231,9 +267,13 @@ private fun PidControllerStatusRow(pid: PidData) {
 @Composable
 private fun CapabilityRow(
     name: String,
+    subsystemKey: String,
     level: CapabilityLevel,
-    isServiceMode: Boolean
+    isServiceMode: Boolean,
+    onCapabilityChange: (String, CapabilityLevel) -> Unit
 ) {
+    var showDropdown by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -247,11 +287,8 @@ private fun CapabilityRow(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Level indicator chip
+        Box {
+            // Level indicator chip (clickable in service mode)
             val (chipColor, textColor) = when (level) {
                 CapabilityLevel.REQUIRED -> StatusActive to Color.Black
                 CapabilityLevel.OPTIONAL -> StatusWarning to Color.Black
@@ -260,6 +297,8 @@ private fun CapabilityRow(
             }
 
             Surface(
+                onClick = { if (isServiceMode) showDropdown = true },
+                enabled = isServiceMode,
                 shape = MaterialTheme.shapes.small,
                 color = chipColor
             ) {
@@ -269,6 +308,36 @@ private fun CapabilityRow(
                     style = MaterialTheme.typography.labelSmall,
                     color = textColor
                 )
+            }
+
+            // Dropdown menu for editing
+            DropdownMenu(
+                expanded = showDropdown,
+                onDismissRequest = { showDropdown = false }
+            ) {
+                CapabilityLevel.entries.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option.displayName) },
+                        onClick = {
+                            onCapabilityChange(subsystemKey, option)
+                            showDropdown = false
+                        },
+                        leadingIcon = {
+                            val iconColor = when (option) {
+                                CapabilityLevel.REQUIRED -> StatusActive
+                                CapabilityLevel.OPTIONAL -> StatusWarning
+                                CapabilityLevel.SIMULATED -> MaterialTheme.colorScheme.tertiary
+                                CapabilityLevel.NOT_PRESENT -> Color.Gray
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .clip(CircleShape)
+                                    .background(iconColor)
+                            )
+                        }
+                    )
+                }
             }
         }
     }
@@ -316,6 +385,19 @@ private fun DiagnosticsScreenPreview() {
                 pidData = listOf(
                     PidData(
                         controllerId = 1,
+                        name = "LN2 (Cold)",
+                        processValue = -120.5f,
+                        setpointValue = -130.0f,
+                        outputPercent = 78.2f,
+                        mode = PidMode.AUTO,
+                        isEnabled = true,
+                        isOutputActive = true,
+                        hasFault = false,
+                        ageMs = 150,
+                        capabilityLevel = CapabilityLevel.OPTIONAL
+                    ),
+                    PidData(
+                        controllerId = 2,
                         name = "Axle Bearings",
                         processValue = 25.3f,
                         setpointValue = 30.0f,
@@ -328,30 +410,17 @@ private fun DiagnosticsScreenPreview() {
                         capabilityLevel = CapabilityLevel.REQUIRED
                     ),
                     PidData(
-                        controllerId = 2,
-                        name = "Orbital Bearings",
-                        processValue = 0.0f,
-                        setpointValue = 0.0f,
-                        outputPercent = 0.0f,
-                        mode = PidMode.STOP,
-                        isEnabled = false,
-                        isOutputActive = false,
-                        hasFault = false,
-                        ageMs = 5000,
-                        capabilityLevel = CapabilityLevel.REQUIRED
-                    ),
-                    PidData(
                         controllerId = 3,
-                        name = "LN2 Line",
-                        processValue = -120.5f,
-                        setpointValue = -130.0f,
-                        outputPercent = 78.2f,
+                        name = "Orbital Bearings",
+                        processValue = 28.1f,
+                        setpointValue = 30.0f,
+                        outputPercent = 32.1f,
                         mode = PidMode.AUTO,
                         isEnabled = true,
                         isOutputActive = true,
                         hasFault = false,
-                        ageMs = 150,
-                        capabilityLevel = CapabilityLevel.OPTIONAL
+                        ageMs = 120,
+                        capabilityLevel = CapabilityLevel.REQUIRED
                     )
                 ),
                 isServiceMode = true

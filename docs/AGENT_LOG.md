@@ -911,3 +911,84 @@ Updated `docs/FIRMWARE_AGENT_PROMPT.md` with SET_RELAY (0x0001) implementation r
 - All 101 unit tests passing
 - Navigation tested on device - no visual shift on back button transitions
 - Connect button correctly navigates to Devices when disconnected
+
+---
+
+## Stage 8 Progress Update (2026-01-19) — PID Error Handling & Capability Editing
+
+### PID ID Mapping Update
+Updated PID controller ID assignments to match physical hardware:
+- **PID 1**: LN2 (Cold) — Optional, cryogenic temperature control
+- **PID 2**: Axle bearings — Required, main bearing temperature
+- **PID 3**: Orbital bearings — Required, orbital mechanism temperature
+
+### Probe Error Detection
+Implemented probe error detection for Omron E5CC PID controllers:
+
+#### PidData.kt Enhancements
+- Added `ProbeError` enum: `NONE`, `OVER_RANGE` (HHHH), `UNDER_RANGE` (LLLL)
+- Added `probeError` field to `PidData` model
+- Added `hasProbeError` computed property
+- Added `hasAnyIssue` computed property (combines offline/stale/fault/probe error)
+- Added `detectProbeError(pv, isLn2Controller)` static helper
+
+#### Threshold Tuning
+- `PROBE_ERROR_THRESHOLD_HIGH`: Lowered from 3000°C to 500°C to catch E5CC probe errors (~800°C observed)
+- `PROBE_ERROR_THRESHOLD_LOW`: -300°C (unchanged, only applies to non-LN2 controllers)
+- `STALE_THRESHOLD_MS`: Increased from 500ms to 1500ms to accommodate 900ms RS-485 polling interval
+
+**Note**: Both threshold changes are documented in code comments with date and rationale. Can be reverted if needed.
+
+### Visual Error Treatment (RunSections.kt)
+- **Pulsing red border**: For offline or probe error states
+- **Yellow border**: For stale status (data age warning)
+- **Status badges**: OFFLINE, HHHH, LLLL, STALE shown in PID tiles
+- **PV display**: Shows error code (HHHH/LLLL) instead of temperature when probe has error
+- **Fault LED**: Lights up when probe error detected
+
+### Capability Editing in Service Mode (DiagnosticsScreen.kt)
+- Capability chips now editable when in service mode
+- Tap any capability chip → dropdown with all levels (Required/Optional/Not installed/Simulated)
+- **OVERRIDE badge**: Shows when capabilities have been modified from defaults
+- **Reset to Defaults button**: Clears all overrides
+- Overrides persist while in service mode but can be cleared
+
+### Repository Interface Extensions
+Added to `MachineRepository`:
+```kotlin
+val capabilityOverrides: StateFlow<SubsystemCapabilities?>
+suspend fun setCapabilityOverride(subsystem: String, level: CapabilityLevel)
+suspend fun clearCapabilityOverrides()
+```
+
+Implemented in both `BleMachineRepository` and `MockMachineRepository`.
+
+### DiagnosticsViewModel Updates
+- Added `hasCapabilityOverrides` StateFlow
+- Added `setCapabilityOverride(subsystem, level)` function
+- Added `clearCapabilityOverrides()` function
+
+### Files Modified
+- `domain/model/PidData.kt` — ProbeError enum, detection logic, threshold constants
+- `domain/model/SubsystemCapabilities.kt` — Updated comments for PID ID mapping
+- `data/repository/MachineRepository.kt` — Capability override interface
+- `data/repository/BleMachineRepository.kt` — Probe detection, capability levels
+- `data/repository/MockMachineRepository.kt` — Capability override implementation
+- `ui/run/RunSections.kt` — Visual error treatment, pulsing borders, status badges
+- `ui/diagnostics/DiagnosticsScreen.kt` — Editable capability chips
+- `ui/diagnostics/DiagnosticsViewModel.kt` — Capability editing methods
+- `ui/home/HomeScreen.kt` — Updated preview with new PID names
+- `ui/home/HomeCards.kt` — Updated PID ID references
+- `ui/pid/PidDetailScreen.kt` — Updated PID ID references
+- Tests: Updated PID names in `MockMachineRepositoryTest.kt`, `PidDetailViewModelTest.kt`
+
+### Testing
+- All 101 unit tests passing
+- Real device testing with ESP32-S3 MCU:
+  - PID 2 and PID 3 reading proper values
+  - PID 1 showing 800°C (disconnected probe) → now triggers HHHH error display
+  - Stale cycling fixed with 1500ms threshold
+
+### Known Issues Resolved
+- PID stale cycling: Was caused by 500ms threshold vs 900ms RS-485 poll interval → fixed with 1500ms threshold
+- Probe error not detected: Was caused by 3000°C threshold vs ~800°C E5CC error value → fixed with 500°C threshold

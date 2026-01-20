@@ -16,7 +16,8 @@ data class PidData(
     val hasFault: Boolean,
     val ageMs: Int,  // How old the RS-485 reading is
     val capabilityLevel: CapabilityLevel,
-    val alarmRelays: AlarmRelays = AlarmRelays.NONE  // AL1/AL2 relay outputs
+    val alarmRelays: AlarmRelays = AlarmRelays.NONE,  // AL1/AL2 relay outputs
+    val probeError: ProbeError = ProbeError.NONE  // Probe connection errors
 ) {
     val isStale: Boolean
         get() = ageMs > STALE_THRESHOLD_MS
@@ -30,10 +31,71 @@ data class PidData(
     val hasActiveAlarm: Boolean
         get() = alarmRelays.al1 || alarmRelays.al2
 
+    /**
+     * True if the probe has an error (disconnected, over-range, under-range).
+     */
+    val hasProbeError: Boolean
+        get() = probeError != ProbeError.NONE
+
+    /**
+     * True if this controller has any issue that should show a warning/error state.
+     */
+    val hasAnyIssue: Boolean
+        get() = isOffline || isStale || hasFault || hasProbeError
+
     companion object {
-        const val STALE_THRESHOLD_MS = 500
+        // NOTE: Stale threshold increased from 500ms to 1500ms on 2026-01-19.
+        // Firmware polls 3 controllers at 300ms intervals (~900ms round-trip per controller).
+        // 500ms caused constant Online→Stale cycling. 1500ms provides margin for jitter.
+        const val STALE_THRESHOLD_MS = 1500
         const val OFFLINE_THRESHOLD_MS = 3000
+
+        // Sentinel values from Omron E5CC for probe errors
+        // These are the descaled values in °C - firmware sends scaled x10
+        // When probe is disconnected, E5CC shows HHHH and sends max value
+        //
+        // NOTE: Threshold lowered from 3000°C to 500°C on 2026-01-19 to catch
+        // actual E5CC probe error readings (~800°C observed). If this causes
+        // false positives with legitimate high-temp processes, consider raising
+        // back to 3000°C or implementing a per-controller threshold.
+        const val PROBE_ERROR_THRESHOLD_HIGH = 500.0f   // Lowered to catch E5CC errors (~800°C)
+        const val PROBE_ERROR_THRESHOLD_LOW = -300.0f   // -300°C is clearly an error (except LN2)
+
+        /**
+         * Detect probe error from process value.
+         * For LN2 controller, very low temps are valid, so only check high range.
+         */
+        fun detectProbeError(pv: Float, isLn2Controller: Boolean): ProbeError {
+            return when {
+                pv >= PROBE_ERROR_THRESHOLD_HIGH -> ProbeError.OVER_RANGE
+                !isLn2Controller && pv <= PROBE_ERROR_THRESHOLD_LOW -> ProbeError.UNDER_RANGE
+                else -> ProbeError.NONE
+            }
+        }
     }
+}
+
+/**
+ * Probe error states for temperature sensors.
+ */
+enum class ProbeError {
+    NONE,           // No error, probe is connected and reading normally
+    OVER_RANGE,     // HHHH - probe reading above measurement range (often disconnected)
+    UNDER_RANGE;    // LLLL - probe reading below measurement range
+
+    val displayName: String
+        get() = when (this) {
+            NONE -> "OK"
+            OVER_RANGE -> "Over range (HHHH)"
+            UNDER_RANGE -> "Under range (LLLL)"
+        }
+
+    val shortName: String
+        get() = when (this) {
+            NONE -> "OK"
+            OVER_RANGE -> "HHHH"
+            UNDER_RANGE -> "LLLL"
+        }
 }
 
 /**

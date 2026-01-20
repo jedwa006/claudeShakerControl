@@ -39,7 +39,7 @@ class PidDetailViewModelTest {
 
         assertNotNull(pidData)
         assertEquals(1, pidData!!.controllerId)
-        assertEquals("Axle bearings", pidData.name)
+        assertEquals("LN2 (Cold)", pidData.name)
     }
 
     @Test
@@ -48,7 +48,7 @@ class PidDetailViewModelTest {
 
         assertNotNull(pidData)
         assertEquals(2, pidData!!.controllerId)
-        assertEquals("Orbital bearings", pidData.name)
+        assertEquals("Axle bearings", pidData.name)
     }
 
     @Test
@@ -57,7 +57,7 @@ class PidDetailViewModelTest {
 
         assertNotNull(pidData)
         assertEquals(3, pidData!!.controllerId)
-        assertEquals("LN2 line", pidData.name)
+        assertEquals("Orbital bearings", pidData.name)
     }
 
     @Test

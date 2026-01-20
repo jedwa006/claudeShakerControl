@@ -36,8 +36,8 @@ class MockMachineRepositoryTest {
         val pid1 = pidData.find { it.controllerId == 1 }
 
         assertNotNull(pid1)
-        assertEquals("Axle bearings", pid1!!.name)
-        assertEquals(30.0f, pid1.setpointValue, 0.01f)
+        assertEquals("LN2 (Cold)", pid1!!.name)
+        assertEquals(-185.0f, pid1.setpointValue, 0.01f)
         assertEquals(PidMode.AUTO, pid1.mode)
         assertTrue(pid1.isEnabled)
     }
@@ -67,15 +67,15 @@ class MockMachineRepositoryTest {
         val pid1 = pidData.find { it.controllerId == 1 }
         val pid2 = pidData.find { it.controllerId == 2 }
 
-        // PID 1 should be unchanged
-        assertEquals(30.0f, pid1!!.setpointValue, 0.01f)
-        // PID 2 should be updated
+        // PID 1 (LN2 Cold) should be unchanged at -185.0f
+        assertEquals(-185.0f, pid1!!.setpointValue, 0.01f)
+        // PID 2 (Axle bearings) should be updated
         assertEquals(newSetpoint, pid2!!.setpointValue, 0.01f)
     }
 
     @Test
-    fun `setSetpoint for PID 3 (LN2) works`() = runTest {
-        val newSetpoint = -190.0f
+    fun `setSetpoint for PID 3 (Orbital) works`() = runTest {
+        val newSetpoint = 35.0f
 
         val result = repository.setSetpoint(3, newSetpoint)
 
@@ -147,13 +147,13 @@ class MockMachineRepositoryTest {
     fun `setSetpoint with negative value works (LN2 temperatures)`() = runTest {
         val newSetpoint = -195.5f
 
-        val result = repository.setSetpoint(3, newSetpoint)
+        val result = repository.setSetpoint(1, newSetpoint)
 
         assertTrue(result.isSuccess)
 
         val pidData = repository.pidData.first()
-        val pid3 = pidData.find { it.controllerId == 3 }
-        assertEquals(newSetpoint, pid3!!.setpointValue, 0.01f)
+        val pid1 = pidData.find { it.controllerId == 1 }
+        assertEquals(newSetpoint, pid1!!.setpointValue, 0.01f)
     }
 
     @Test

@@ -8,9 +8,9 @@ package com.shakercontrol.app.domain.model
  * these for UI gating.
  */
 data class SubsystemCapabilities(
-    val pid1: CapabilityLevel,       // Bit 0: Axle bearings PID
-    val pid2: CapabilityLevel,       // Bit 1: Orbital bearings PID
-    val pid3: CapabilityLevel,       // Bit 2: LN2 line PID
+    val pid1: CapabilityLevel,       // Bit 0: LN2 (Cold) PID
+    val pid2: CapabilityLevel,       // Bit 1: Axle bearings PID
+    val pid3: CapabilityLevel,       // Bit 2: Orbital bearings PID
     val ln2Valve: CapabilityLevel,   // Bit 3: LN2 solenoid valve
     val doorActuator: CapabilityLevel, // Bit 4: Door locking bar
     val doorSwitch: CapabilityLevel,   // Bit 5: Door position sensor
@@ -29,13 +29,13 @@ data class SubsystemCapabilities(
         val missing = mutableListOf<String>()
 
         if (pid1 == CapabilityLevel.REQUIRED && pid1Status != SubsystemStatus.OK) {
-            missing.add("PID 1 (Axle bearings)")
+            missing.add("PID 1 (LN2 Cold)")
         }
         if (pid2 == CapabilityLevel.REQUIRED && pid2Status != SubsystemStatus.OK) {
-            missing.add("PID 2 (Orbital bearings)")
+            missing.add("PID 2 (Axle bearings)")
         }
         if (pid3 == CapabilityLevel.REQUIRED && pid3Status != SubsystemStatus.OK) {
-            missing.add("PID 3 (LN2 line)")
+            missing.add("PID 3 (Orbital bearings)")
         }
 
         return missing
@@ -63,12 +63,12 @@ data class SubsystemCapabilities(
 
     companion object {
         /**
-         * Default capabilities: PID 1 & 2 required, PID 3 optional, others as equipped.
+         * Default capabilities: PID 2 & 3 (Axle/Orbital) required, PID 1 (LN2) optional, others as equipped.
          */
         val DEFAULT = SubsystemCapabilities(
-            pid1 = CapabilityLevel.REQUIRED,
-            pid2 = CapabilityLevel.REQUIRED,
-            pid3 = CapabilityLevel.OPTIONAL,
+            pid1 = CapabilityLevel.OPTIONAL,  // LN2 (Cold)
+            pid2 = CapabilityLevel.REQUIRED,  // Axle bearings
+            pid3 = CapabilityLevel.REQUIRED,  // Orbital bearings
             ln2Valve = CapabilityLevel.OPTIONAL,
             doorActuator = CapabilityLevel.REQUIRED,
             doorSwitch = CapabilityLevel.REQUIRED,
@@ -85,9 +85,9 @@ data class SubsystemCapabilities(
             // Simple bit presence -> REQUIRED, absence -> NOT_PRESENT
             // In real implementation, MCU would send full capability levels
             return SubsystemCapabilities(
-                pid1 = if (bits and (1 shl 0) != 0) CapabilityLevel.REQUIRED else CapabilityLevel.NOT_PRESENT,
-                pid2 = if (bits and (1 shl 1) != 0) CapabilityLevel.REQUIRED else CapabilityLevel.NOT_PRESENT,
-                pid3 = if (bits and (1 shl 2) != 0) CapabilityLevel.OPTIONAL else CapabilityLevel.NOT_PRESENT,
+                pid1 = if (bits and (1 shl 0) != 0) CapabilityLevel.OPTIONAL else CapabilityLevel.NOT_PRESENT,  // LN2 (Cold)
+                pid2 = if (bits and (1 shl 1) != 0) CapabilityLevel.REQUIRED else CapabilityLevel.NOT_PRESENT, // Axle
+                pid3 = if (bits and (1 shl 2) != 0) CapabilityLevel.REQUIRED else CapabilityLevel.NOT_PRESENT, // Orbital
                 ln2Valve = if (bits and (1 shl 3) != 0) CapabilityLevel.OPTIONAL else CapabilityLevel.NOT_PRESENT,
                 doorActuator = if (bits and (1 shl 4) != 0) CapabilityLevel.REQUIRED else CapabilityLevel.NOT_PRESENT,
                 doorSwitch = if (bits and (1 shl 5) != 0) CapabilityLevel.REQUIRED else CapabilityLevel.NOT_PRESENT,

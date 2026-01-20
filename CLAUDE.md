@@ -124,10 +124,13 @@ Use `adb shell uiautomator dump` to get fresh coordinates if layout changes.
 - Back button visual shift fixed (48dp fixed box with crossfade)
 - **Firmware version display**: Full version with build ID (e.g., "0.2.0+26011901")
 - **PID controller status in Diagnostics**: Shows RS-485 controller connection status (Online/Stale/Offline)
-- **Capability table in Diagnostics**: Color-coded chips (Required/Optional/Not installed)
+- **Capability table in Diagnostics**: Color-coded chips (Required/Optional/Not installed), editable in service mode
 - **Dynamic PID tiles**: Run screen shows only connected controllers with count badge
 - **AL1/AL2 alarm relay support**: PidData model and UI indicators ready for alarm states
 - **IoScreen UI improvements**: Pulsing green indicators for active relays, clearer button labels
+- **PID error handling**: Probe error detection (HHHH/LLLL), pulsing red border for errors, status badges
+- **Capability override editing**: Service mode allows editing capability levels with OVERRIDE badge
+- **Threshold tuning**: Stale threshold 1500ms (was 500ms), probe error threshold 500°C (was 3000°C)
 
 **Remaining:**
 1. Recipe persistence (save/load recipes)
@@ -139,13 +142,15 @@ Use `adb shell uiautomator dump` to get fresh coordinates if layout changes.
 - Relay commands show "NO ARGS" error (firmware needs SET_RELAY handler - see FIRMWARE_AGENT_PROMPT.md)
 
 ### RS-485 Integration Status
-The app is ready to receive RS-485 PID controller data from firmware:
-- **Telemetry parsing**: Expects `controller_count` and per-controller blocks
+The app is now receiving real RS-485 PID controller data from firmware:
+- **PID ID mapping**: ID 1=LN2 Cold (Optional), ID 2=Axle (Required), ID 3=Orbital (Required)
+- **Telemetry parsing**: 3 controllers with PV/SV/OP/mode/status at ~10Hz
 - **AL1/AL2 bits**: Ready to display alarm relay states when firmware provides them
+- **Probe error detection**: Detects HHHH (over-range) and LLLL (under-range) from E5CC controllers
 - **Dynamic display**: Only shows controllers with capability > NOT_PRESENT
 - **Start gating**: Correctly blocks start when Required controllers are offline
 
-Currently testing with PID 3 (LN2 line) - awaiting firmware for PID 1 (Axle) and PID 2 (Orbital).
+Currently testing with all 3 PID controllers connected via RS-485. PID 1 (LN2) has disconnected probe showing HHHH error.
 
 ### Implementation Checklist Progress
 From `docs/MCU_docs/95-implementation-checklist.md`:

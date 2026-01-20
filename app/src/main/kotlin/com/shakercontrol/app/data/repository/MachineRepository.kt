@@ -87,4 +87,10 @@ interface MachineRepository {
     val isSimulationEnabled: StateFlow<Boolean>
     suspend fun setSimulationEnabled(enabled: Boolean)
     suspend fun setSimulatedInput(channel: Int, high: Boolean)
+
+    // Capability overrides (service mode only)
+    // When non-null, overrides the default capability configuration
+    val capabilityOverrides: StateFlow<SubsystemCapabilities?>
+    suspend fun setCapabilityOverride(subsystem: String, level: CapabilityLevel)
+    suspend fun clearCapabilityOverrides()
 }

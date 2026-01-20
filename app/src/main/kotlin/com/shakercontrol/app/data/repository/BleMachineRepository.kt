@@ -116,6 +116,10 @@ class BleMachineRepository @Inject constructor(
     private var simulatedInputs = 0
     private var realInputs = 0
 
+    // Capability overrides (service mode only)
+    private val _capabilityOverrides = MutableStateFlow<SubsystemCapabilities?>(null)
+    override val capabilityOverrides: StateFlow<SubsystemCapabilities?> = _capabilityOverrides.asStateFlow()
+
     init {
         // Monitor BLE connection state
         scope.launch {
@@ -378,8 +382,14 @@ class BleMachineRepository @Inject constructor(
     private fun processTelemetry(snapshot: TelemetryParser.TelemetrySnapshot) {
         lastBleHeartbeatTime = System.currentTimeMillis()
 
+        // Get current capabilities for proper capability levels
+        val capabilities = _systemStatus.value.capabilities
+
         // Map controller data to PidData
         val pidList = snapshot.controllers.map { controller ->
+            val isLn2Controller = controller.controllerId == 1
+            val probeError = PidData.detectProbeError(controller.pv, isLn2Controller)
+
             PidData(
                 controllerId = controller.controllerId,
                 name = getPidName(controller.controllerId),
@@ -391,7 +401,8 @@ class BleMachineRepository @Inject constructor(
                 isOutputActive = controller.opPercent > 0,
                 hasFault = false, // Checked via alarm bits
                 ageMs = controller.ageMs,
-                capabilityLevel = CapabilityLevel.REQUIRED
+                capabilityLevel = capabilities.getPidCapability(controller.controllerId),
+                probeError = probeError
             )
         }
         _pidData.value = pidList
@@ -439,9 +450,9 @@ class BleMachineRepository @Inject constructor(
     }
 
     private fun getPidName(controllerId: Int): String = when (controllerId) {
-        1 -> "Axle bearings"
-        2 -> "Orbital bearings"
-        3 -> "LN2 line"
+        1 -> "LN2 (Cold)"
+        2 -> "Axle bearings"
+        3 -> "Orbital bearings"
         else -> "PID $controllerId"
     }
 
@@ -911,5 +922,38 @@ class BleMachineRepository @Inject constructor(
             _ioStatus.value = _ioStatus.value.copy(digitalInputs = simulatedInputs)
         }
         Log.d(TAG, "Simulated DI$channel set to ${if (high) "HIGH" else "LOW"}")
+    }
+
+    override suspend fun setCapabilityOverride(subsystem: String, level: CapabilityLevel) {
+        // Get current overrides or start from default capabilities
+        val current = _capabilityOverrides.value ?: SubsystemCapabilities.DEFAULT
+
+        val updated = when (subsystem) {
+            "pid1" -> current.copy(pid1 = level)
+            "pid2" -> current.copy(pid2 = level)
+            "pid3" -> current.copy(pid3 = level)
+            "ln2Valve" -> current.copy(ln2Valve = level)
+            "doorActuator" -> current.copy(doorActuator = level)
+            "doorSwitch" -> current.copy(doorSwitch = level)
+            "relayInternal" -> current.copy(relayInternal = level)
+            "relayExternal" -> current.copy(relayExternal = level)
+            else -> {
+                Log.w(TAG, "Unknown subsystem: $subsystem")
+                return
+            }
+        }
+
+        _capabilityOverrides.value = updated
+
+        // Update system status with new capabilities
+        _systemStatus.value = _systemStatus.value.copy(capabilities = updated)
+        Log.d(TAG, "Capability override: $subsystem -> ${level.displayName}")
+    }
+
+    override suspend fun clearCapabilityOverrides() {
+        _capabilityOverrides.value = null
+        // Reset to default capabilities
+        _systemStatus.value = _systemStatus.value.copy(capabilities = SubsystemCapabilities.DEFAULT)
+        Log.d(TAG, "Capability overrides cleared")
     }
 }
