@@ -88,7 +88,7 @@ fun LedIndicator(
 }
 
 /**
- * Compact LED row for PID tiles showing Enabled/Output/Fault status.
+ * Compact LED row for PID tiles showing Enabled/Output/Fault/Alarm status.
  */
 @Composable
 fun PidStatusLeds(
@@ -96,6 +96,8 @@ fun PidStatusLeds(
     isOutputActive: Boolean,
     hasFault: Boolean,
     isStale: Boolean = false,
+    al1Active: Boolean = false,
+    al2Active: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -121,6 +123,23 @@ fun PidStatusLeds(
             onColor = SemanticColors.Fault,
             isStale = isStale
         )
+        // AL1/AL2 alarm relays from PID controller
+        if (al1Active || al2Active) {
+            LedIndicator(
+                isOn = al1Active,
+                label = "AL1",
+                onColor = SemanticColors.Alarm,
+                isPulsing = al1Active,
+                isStale = isStale
+            )
+            LedIndicator(
+                isOn = al2Active,
+                label = "AL2",
+                onColor = SemanticColors.Alarm,
+                isPulsing = al2Active,
+                isStale = isStale
+            )
+        }
     }
 }
 

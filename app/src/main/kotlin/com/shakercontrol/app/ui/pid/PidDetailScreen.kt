@@ -176,8 +176,39 @@ private fun PidDetailContent(
                         isEnabled = pidData.isEnabled,
                         isOutputActive = pidData.isOutputActive,
                         hasFault = pidData.hasFault,
-                        isStale = pidData.isStale
+                        isStale = pidData.isStale,
+                        al1Active = pidData.alarmRelays.al1,
+                        al2Active = pidData.alarmRelays.al2
                     )
+
+                    // Show alarm details if any alarms are active
+                    if (pidData.hasActiveAlarm) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = "Alarm Active",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                val alarmText = buildString {
+                                    if (pidData.alarmRelays.al1) append("AL1 triggered")
+                                    if (pidData.alarmRelays.al1 && pidData.alarmRelays.al2) append(" • ")
+                                    if (pidData.alarmRelays.al2) append("AL2 triggered")
+                                }
+                                Text(
+                                    text = alarmText,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
+                    }
                 } else {
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(

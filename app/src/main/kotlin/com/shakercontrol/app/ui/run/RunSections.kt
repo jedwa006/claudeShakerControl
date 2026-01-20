@@ -368,6 +368,7 @@ fun ControlsSection(
 
 /**
  * PID tiles section on Run screen.
+ * Dynamically shows only controllers that are connected via RS-485.
  */
 @Composable
 fun TemperaturesSection(
@@ -375,19 +376,43 @@ fun TemperaturesSection(
     onNavigateToPid: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Filter to only show controllers that have capability level > NOT_PRESENT
+    val visibleControllers = pidData.filter { it.capabilityLevel != CapabilityLevel.NOT_PRESENT }
+
     Card(modifier = modifier) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = "Temperatures",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Temperatures",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (visibleControllers.isNotEmpty()) {
+                    Text(
+                        text = "${visibleControllers.size} controller${if (visibleControllers.size != 1) "s" else ""}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(16.dp))
 
-            pidData.forEach { pid ->
-                PidTile(pid = pid, onClick = { onNavigateToPid(pid.controllerId) })
-                if (pid != pidData.last()) {
-                    Spacer(modifier = Modifier.height(12.dp))
+            if (visibleControllers.isEmpty()) {
+                Text(
+                    text = "No temperature controllers connected",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                visibleControllers.forEach { pid ->
+                    PidTile(pid = pid, onClick = { onNavigateToPid(pid.controllerId) })
+                    if (pid != visibleControllers.last()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
                 }
             }
         }
@@ -450,7 +475,9 @@ private fun PidTile(
                 isEnabled = pid.isEnabled,
                 isOutputActive = pid.isOutputActive,
                 hasFault = pid.hasFault,
-                isStale = pid.isStale
+                isStale = pid.isStale,
+                al1Active = pid.alarmRelays.al1,
+                al2Active = pid.alarmRelays.al2
             )
         }
     }
