@@ -102,6 +102,19 @@ class DevicesViewModel @Inject constructor(
                 }
             }
         }
+
+        // Auto-reconnect to last device when entering Devices screen
+        // This triggers the countdown redirect when connection succeeds
+        viewModelScope.launch {
+            // Small delay to let preferences load
+            kotlinx.coroutines.delay(100)
+            val lastDevice = devicePreferences.lastConnectedDevice.first()
+            val autoReconnect = devicePreferences.autoReconnectEnabled.first()
+            if (lastDevice != null && autoReconnect &&
+                bleManager.connectionState.value == BleConnectionState.DISCONNECTED) {
+                connectToLastDevice()
+            }
+        }
     }
 
     private suspend fun handleDisconnect(event: DisconnectEvent) {
