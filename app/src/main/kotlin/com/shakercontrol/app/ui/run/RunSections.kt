@@ -28,7 +28,12 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Recipe editor section.
+ * Recipe editor section with integrated readiness indicators.
+ * Layout: Recipe inputs → Controls/Progress → Interlocks (static at bottom)
+ *
+ * When idle: Shows recipe inputs, then controls (Lights/Door), then interlocks
+ * When running: Shows recipe inputs, then progress display, then interlocks
+ *
  * Spec: docs/dashboard-sec-v1.md section 5.1 and docs/ui-copy-labels-v1.md section 3.2
  */
 @Composable
@@ -36,79 +41,346 @@ fun RecipeSection(
     recipe: Recipe,
     runProgress: RunProgress?,
     isRunning: Boolean,
+    interlockStatus: InterlockStatus,
+    isServiceMode: Boolean,
     onRecipeChange: (Recipe) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(modifier = modifier) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = "Recipe",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
+        Column(modifier = Modifier.padding(12.dp)) {
+            // === RECIPE CONFIGURATION SECTION (top) ===
+            RecipeConfigSection(
+                recipe = recipe,
+                isRunning = isRunning,
+                onRecipeChange = onRecipeChange
             )
-            Spacer(modifier = Modifier.height(16.dp))
 
-            // Input fields
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                DurationInput(
-                    label = "Milling (on)",
-                    duration = recipe.millingDuration,
-                    onDurationChange = { onRecipeChange(recipe.copy(millingDuration = it)) },
-                    enabled = !isRunning,
-                    modifier = Modifier.weight(1f)
-                )
-                DurationInput(
-                    label = "Hold (off)",
-                    duration = recipe.holdDuration,
-                    onDurationChange = { onRecipeChange(recipe.copy(holdDuration = it)) },
-                    enabled = !isRunning,
-                    modifier = Modifier.weight(1f)
-                )
-                CycleInput(
-                    cycles = recipe.cycleCount,
-                    onCyclesChange = { onRecipeChange(recipe.copy(cycleCount = it)) },
-                    enabled = !isRunning,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            Spacer(modifier = Modifier.height(8.dp))
+            SectionDivider()
 
-            Spacer(modifier = Modifier.height(16.dp))
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Derived totals
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Text("Milling total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(formatDurationLong(recipe.totalMillingTime), style = MaterialTheme.typography.bodyLarge)
-                }
-                Column {
-                    Text("Hold total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(formatDurationLong(recipe.totalHoldingTime), style = MaterialTheme.typography.bodyLarge)
-                }
-                Column {
-                    Text("Estimated total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(
-                        formatDurationLong(recipe.totalRuntime),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            // Running status
+            // === MIDDLE SECTION: Controls when idle, Progress when running ===
             if (runProgress != null) {
-                Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(16.dp))
-
+                // Running: Show progress display
+                Spacer(modifier = Modifier.height(8.dp))
                 RunProgressDisplay(runProgress = runProgress)
+            } else {
+                // Idle: Show controls (Lights, Door, + Heat/Motor in service mode)
+                Spacer(modifier = Modifier.height(8.dp))
+                ControlsRow(isServiceMode = isServiceMode)
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            SectionDivider()
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // === INTERLOCKS SECTION (static at bottom) ===
+            InterlocksRow(
+                interlockStatus = interlockStatus,
+                isServiceMode = isServiceMode
+            )
+        }
+    }
+}
+
+/**
+ * Recipe configuration sub-section with inputs and totals.
+ */
+@Composable
+private fun RecipeConfigSection(
+    recipe: Recipe,
+    isRunning: Boolean,
+    onRecipeChange: (Recipe) -> Unit
+) {
+    // Header row with title and estimated total
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Recipe",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        // Prominent total time display
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+            shape = MaterialTheme.shapes.small
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Schedule,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(
+                    text = formatDurationLong(recipe.totalRuntime),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(10.dp))
+
+    // Input fields - compact row
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        DurationInput(
+            label = "Milling (on)",
+            duration = recipe.millingDuration,
+            onDurationChange = { onRecipeChange(recipe.copy(millingDuration = it)) },
+            enabled = !isRunning,
+            modifier = Modifier.weight(1f)
+        )
+        DurationInput(
+            label = "Hold (off)",
+            duration = recipe.holdDuration,
+            onDurationChange = { onRecipeChange(recipe.copy(holdDuration = it)) },
+            enabled = !isRunning,
+            modifier = Modifier.weight(1f)
+        )
+        CycleInput(
+            cycles = recipe.cycleCount,
+            onCyclesChange = { onRecipeChange(recipe.copy(cycleCount = it)) },
+            enabled = !isRunning,
+            modifier = Modifier.weight(0.7f)
+        )
+    }
+
+    Spacer(modifier = Modifier.height(6.dp))
+
+    // Derived totals - inline with muted styling
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "Mill: ${formatDurationLong(recipe.totalMillingTime)}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = "Hold: ${formatDurationLong(recipe.totalHoldingTime)}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/**
+ * Visual section divider (simple horizontal line).
+ */
+@Composable
+private fun SectionDivider() {
+    HorizontalDivider(
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    )
+}
+
+/**
+ * Controls row with Lights, Door, and service-mode controls.
+ * These are locked/hidden when a run is in progress.
+ */
+@Composable
+private fun ControlsRow(
+    isServiceMode: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Controls",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Medium
+        )
+
+        Spacer(modifier = Modifier.width(4.dp))
+
+        ReadinessToggleButton(
+            label = "Lights",
+            icon = Icons.Default.Lightbulb
+        )
+        ReadinessToggleButton(
+            label = "Door",
+            icon = Icons.Default.Lock
+        )
+
+        // Service mode controls
+        if (isServiceMode) {
+            Spacer(modifier = Modifier.weight(1f))
+            Surface(
+                color = SemanticColors.Warning.copy(alpha = 0.15f),
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(
+                    text = "SVC",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SemanticColors.Warning,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+            ReadinessToggleButton(
+                label = "Heat",
+                icon = Icons.Default.Whatshot,
+                warningColor = true
+            )
+            ReadinessToggleButton(
+                label = "Motor",
+                icon = Icons.Default.Settings,
+                warningColor = true
+            )
+        }
+    }
+}
+
+/**
+ * Static interlocks row showing system status.
+ * Always visible at the bottom of the Recipe section.
+ */
+@Composable
+private fun InterlocksRow(
+    interlockStatus: InterlockStatus,
+    isServiceMode: Boolean
+) {
+    val allOk = interlockStatus.isDoorLocked &&
+            interlockStatus.isLn2Present &&
+            !interlockStatus.isEStopActive &&
+            interlockStatus.isPowerEnabled
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Interlock indicators
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Interlocks",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium
+            )
+            ReadinessIndicator("Door", interlockStatus.isDoorLocked)
+            ReadinessIndicator("LN2", interlockStatus.isLn2Present)
+            ReadinessIndicator("E-stop", !interlockStatus.isEStopActive, invertColor = true)
+            ReadinessIndicator("Pwr", interlockStatus.isPowerEnabled)
+            if (isServiceMode) {
+                ReadinessIndicator("Heat", interlockStatus.isHeatersEnabled)
+                ReadinessIndicator("Mtr", interlockStatus.isMotorEnabled)
+            }
+        }
+
+        // Status badge
+        Surface(
+            color = if (allOk) SemanticColors.Normal.copy(alpha = 0.2f) else SemanticColors.Warning.copy(alpha = 0.2f),
+            shape = MaterialTheme.shapes.small
+        ) {
+            Text(
+                text = if (allOk) "OK" else "Check",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (allOk) SemanticColors.Normal else SemanticColors.Warning,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+            )
+        }
+    }
+}
+
+/**
+ * Compact indicator for readiness panel.
+ */
+@Composable
+private fun ReadinessIndicator(
+    label: String,
+    isOn: Boolean,
+    invertColor: Boolean = false
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LedIndicator(
+            isOn = isOn,
+            size = 10.dp,
+            onColor = if (invertColor && !isOn) SemanticColors.Alarm else SemanticColors.OutputActive,
+            offColor = if (invertColor) SemanticColors.Normal else SemanticColors.OutputInactive
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/**
+ * Compact toggle button for readiness panel.
+ * @param compact If true, shows icon only (for space-constrained service mode controls)
+ */
+@Composable
+private fun ReadinessToggleButton(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    warningColor: Boolean = false,
+    compact: Boolean = false
+) {
+    var isOn by remember { mutableStateOf(false) }
+
+    val backgroundColor = when {
+        isOn && warningColor -> SemanticColors.Warning.copy(alpha = 0.3f)
+        isOn -> SemanticColors.Normal.copy(alpha = 0.3f)
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    }
+
+    val contentColor = when {
+        isOn && warningColor -> SemanticColors.Warning
+        isOn -> SemanticColors.Normal
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Surface(
+        onClick = { isOn = !isOn },
+        color = backgroundColor,
+        shape = MaterialTheme.shapes.small
+    ) {
+        Row(
+            modifier = Modifier.padding(
+                horizontal = if (compact) 8.dp else 10.dp,
+                vertical = 6.dp
+            ),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                modifier = Modifier.size(if (compact) 18.dp else 16.dp),
+                tint = contentColor
+            )
+            if (!compact) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = contentColor,
+                    maxLines = 1
+                )
             }
         }
     }
@@ -1111,6 +1383,15 @@ private fun RecipeSectionPreview() {
             recipe = Recipe.DEFAULT,
             runProgress = null,
             isRunning = false,
+            interlockStatus = InterlockStatus(
+                isEStopActive = false,
+                isDoorLocked = true,
+                isLn2Present = true,
+                isPowerEnabled = true,
+                isHeatersEnabled = true,
+                isMotorEnabled = true
+            ),
+            isServiceMode = false,
             onRecipeChange = {}
         )
     }

@@ -32,6 +32,7 @@ import com.shakercontrol.app.ui.theme.ShakerControlTheme
 @Composable
 fun DevicesScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToHome: () -> Unit = {},
     viewModel: DevicesViewModel = hiltViewModel()
 ) {
     val scannedDevices by viewModel.scannedDevices.collectAsStateWithLifecycle()
@@ -43,6 +44,10 @@ fun DevicesScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+
+    // Countdown state for redirect after reconnection
+    var countdownSeconds by remember { mutableIntStateOf(0) }
+    var showCountdownSnackbar by remember { mutableStateOf(false) }
 
     // BLE permissions for Android 12+
     val blePermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -84,6 +89,17 @@ fun DevicesScreen(
         }
     }
 
+    // Countdown effect for redirect
+    LaunchedEffect(countdownSeconds) {
+        if (countdownSeconds > 0) {
+            kotlinx.coroutines.delay(1000)
+            countdownSeconds--
+        } else if (showCountdownSnackbar) {
+            showCountdownSnackbar = false
+            onNavigateToHome()
+        }
+    }
+
     // Collect UI events for feedback
     LaunchedEffect(Unit) {
         viewModel.uiEvents.collect { event ->
@@ -111,6 +127,11 @@ fun DevicesScreen(
                         duration = SnackbarDuration.Short
                     )
                 }
+                is DevicesUiEvent.ConnectedToKnownDevice -> {
+                    // Start countdown for redirect to home
+                    countdownSeconds = 3
+                    showCountdownSnackbar = true
+                }
             }
         }
     }
@@ -135,10 +156,29 @@ fun DevicesScreen(
             onAutoReconnectChange = { viewModel.setAutoReconnectEnabled(it) }
         )
 
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter)
-        )
+        // Countdown snackbar or regular snackbar
+        if (showCountdownSnackbar && countdownSeconds > 0) {
+            Snackbar(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp),
+                action = {
+                    TextButton(onClick = {
+                        showCountdownSnackbar = false
+                        countdownSeconds = 0
+                    }) {
+                        Text("Stay")
+                    }
+                }
+            ) {
+                Text("Connected! Redirecting to Home in $countdownSeconds...")
+            }
+        } else {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
     }
 }
 

@@ -38,8 +38,11 @@ export PATH="$PATH:$ANDROID_HOME/platform-tools"
 # Run lint
 ./gradlew lintDebug
 
-# Run unit tests
+# Run unit tests (101 tests)
 ./gradlew testDebugUnitTest
+
+# Run instrumented UI tests (11 tests, requires connected device)
+./gradlew connectedDebugAndroidTest
 
 # Check connected devices
 adb devices
@@ -50,6 +53,118 @@ adb logcat -s BleManager:D BleMachineRepository:D SessionManager:D
 # Take screenshot
 adb exec-out screencap -p > screenshot.png
 ```
+
+## Testing
+
+### Test Summary
+| Type | Count | Location | Command |
+|------|-------|----------|---------|
+| Unit tests | 101 | `app/src/test/` | `./gradlew testDebugUnitTest` |
+| UI tests | 11 | `app/src/androidTest/` | `./gradlew connectedDebugAndroidTest` |
+| Screenshot tests | Manual | `scripts/screenshot-test.sh` | See below |
+
+### Unit Tests
+Unit tests run on the JVM without a device. They test ViewModels, parsers, and repository logic using `MockMachineRepository`.
+
+```bash
+./gradlew testDebugUnitTest
+```
+
+Key test files:
+- `WireProtocolTest.kt` - Frame encoding/decoding, CRC validation
+- `ParserTest.kt` - Telemetry parsing
+- `IoViewModelTest.kt` - I/O control logic
+- `PidDetailViewModelTest.kt` - PID screen logic
+- `AlarmsViewModelTest.kt` - Alarm management
+
+### Instrumented UI Tests
+UI tests run on a connected device/emulator. They verify navigation and screen behavior using Compose Testing.
+
+```bash
+./gradlew connectedDebugAndroidTest
+```
+
+Test file: `app/src/androidTest/kotlin/com/shakercontrol/app/ui/NavigationTest.kt`
+
+Tests include:
+- Home screen verification
+- Drawer navigation (Run, Devices, Settings, I/O)
+- Back stack behavior
+- Service mode toggle and UI changes
+
+The tests use `MockMachineRepository` via Hilt's `@TestInstallIn` so they run without BLE hardware.
+
+### Visual Regression Testing (Screenshots)
+Manual screenshot testing for visual regression detection.
+
+```bash
+# Capture current screenshots
+./scripts/screenshot-test.sh capture
+
+# Capture reference screenshots (baseline)
+./scripts/screenshot-test.sh reference
+
+# Compare current vs reference (requires ImageMagick)
+./scripts/screenshot-test.sh compare
+
+# Update reference from current
+./scripts/screenshot-test.sh update
+```
+
+Screenshots are stored in:
+- `screenshots/reference/` - Baseline images
+- `screenshots/current/` - Current test images
+- `screenshots/diff/` - Diff images (when compare finds differences)
+
+### When to Run Tests
+- **Before commits**: Run unit tests (`./gradlew testDebugUnitTest`)
+- **Before PRs**: Run full test suite (see Pre-PR Checklist below)
+- **After UI changes**: Run screenshot comparison
+- **CI/CD**: Unit tests always, UI tests on feature branches
+
+### Pre-PR Checklist
+Before creating a PR, run this sequence:
+```bash
+# 1. Unit tests (required)
+JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew testDebugUnitTest
+
+# 2. Build and install
+JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew installDebug
+
+# 3. UI tests (requires connected device)
+JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew connectedDebugAndroidTest
+
+# 4. Screenshot comparison (after UI changes)
+./scripts/screenshot-test.sh capture
+./scripts/screenshot-test.sh compare
+# If intentional changes: ./scripts/screenshot-test.sh update
+```
+
+**Claude workflow**: Before major PRs, automatically run steps 1-4 above. If screenshot comparison shows differences, review the diff images in `screenshots/diff/` and update reference if changes are intentional.
+
+### Deep Links (Debug Navigation)
+The app supports deep links for programmatic navigation and actions. Use these via adb:
+
+```bash
+# Navigation deep links (navigate to screens)
+adb shell am start -a android.intent.action.VIEW -d "shaker://run" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://settings" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://devices" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://diagnostics" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://alarms" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://io" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://pid/1" com.shakercontrol.app.debug
+
+# Action deep links (trigger behavior)
+adb shell am start -a android.intent.action.VIEW -d "shaker://action/reconnect" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://action/connect" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://action/disconnect" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://action/service-mode/enable" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://action/service-mode/disable" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://action/service-mode/toggle" com.shakercontrol.app.debug
+```
+
+**Important:** On first app boot, always use `shaker://action/reconnect` first to connect to the controller, then navigate to screens. Navigation deep links only work reliably on cold start; when app is already running, they deliver intent but may not navigate.
 
 ## Project Structure
 - Android app: Kotlin + Jetpack Compose + Hilt
@@ -77,10 +192,11 @@ Use `adb shell uiautomator dump` to get fresh coordinates if layout changes.
 - Run: tap 270 303
 - Devices: tap 270 387
 - Alarms: tap 270 471
-- I/O Control: tap 270 555
+- I/O Control: tap 270 555 (only visible in service mode)
 - Diagnostics: tap 270 639
 - Settings: tap 270 723
-- Service mode: tap 270 833
+
+Note: Service mode toggle removed from drawer. Enable via Settings screen or deep link (`shaker://action/service-mode/enable`).
 
 ## Related Repositories
 - Firmware: `/tmp/NuNuCryoShaker` (ESP32-S3 BLE GATT server)

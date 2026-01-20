@@ -85,6 +85,15 @@ class RunViewModel @Inject constructor(
             initialValue = false
         )
 
+    // Display slots for configurable visualizations (temperature plots, thermal camera, etc.)
+    private val _displaySlots = MutableStateFlow(
+        listOf(
+            DisplaySlot(0, DisplaySource.EMPTY, "Display 1"),
+            DisplaySlot(1, DisplaySource.EMPTY, "Display 2")
+        )
+    )
+    val displaySlots: StateFlow<List<DisplaySlot>> = _displaySlots.asStateFlow()
+
     // Command execution state
     private val _isExecutingCommand = MutableStateFlow(false)
     val isExecutingCommand: StateFlow<Boolean> = _isExecutingCommand.asStateFlow()
@@ -215,6 +224,19 @@ class RunViewModel @Inject constructor(
             reason.contains("No session") -> "$command failed: Not connected to controller."
             reason.contains("rejected") -> "$command rejected by controller."
             else -> "$command failed: $reason"
+        }
+    }
+
+    /**
+     * Update a display slot's source. Called when user configures a slot.
+     */
+    fun updateDisplaySlot(index: Int, source: DisplaySource, title: String) {
+        _displaySlots.value = _displaySlots.value.map { slot ->
+            if (slot.index == index) {
+                slot.copy(source = source, title = title)
+            } else {
+                slot
+            }
         }
     }
 }
