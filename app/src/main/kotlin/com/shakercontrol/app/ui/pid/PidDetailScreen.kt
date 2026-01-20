@@ -167,7 +167,13 @@ private fun PidDetailContent(
                         }
                         Column {
                             Text("Data Age", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("${pidData.ageMs} ms", style = MaterialTheme.typography.titleMedium)
+                            // Fixed-width format (4 digits) to prevent layout shift during updates
+                            // Values > 9999ms indicate communication issues
+                            Text(
+                                text = "${pidData.ageMs.coerceAtMost(9999).toString().padStart(4, ' ')} ms",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
                         }
                     }
 

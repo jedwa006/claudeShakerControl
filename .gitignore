@@ -53,3 +53,7 @@ signing.properties
 # Mac
 .DS_Store
 .kotlin/
+
+# Screenshot testing (keep reference/, ignore current/ and diff/)
+screenshots/current/
+screenshots/diff/

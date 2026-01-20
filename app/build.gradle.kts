@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt.android)
     alias(libs.plugins.ksp)
+    // Note: Screenshot plugin requires Kotlin 2.2+ and AGP 9.0+
+    // For now, use manual screenshot comparison via adb
 }
 
 android {
@@ -17,7 +19,7 @@ android {
         versionCode = 2
         versionName = "0.2.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "com.shakercontrol.app.HiltTestRunner"
     }
 
     buildTypes {
@@ -53,6 +55,7 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
 }
 
 dependencies {
@@ -93,6 +96,10 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
+    androidTestImplementation(libs.hilt.android.testing)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
+    kspAndroidTest(libs.hilt.android.compiler)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }

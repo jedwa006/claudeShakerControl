@@ -34,4 +34,35 @@ class MainViewModel @Inject constructor(
             machineRepository.disableServiceMode()
         }
     }
+
+    /**
+     * Initiate connection to the last known device.
+     */
+    fun connect() {
+        viewModelScope.launch {
+            // Get saved device address from repository and connect
+            // For now, just start scan - actual connect needs device address
+            machineRepository.startScan()
+        }
+    }
+
+    /**
+     * Disconnect from current device.
+     */
+    fun disconnect() {
+        viewModelScope.launch {
+            machineRepository.disconnect()
+        }
+    }
+
+    /**
+     * Reconnect to the last known device.
+     */
+    fun reconnect() {
+        viewModelScope.launch {
+            // This would use saved device address for auto-reconnect
+            // For deep link, we can try to reconnect via scan + connect
+            machineRepository.startScan()
+        }
+    }
 }

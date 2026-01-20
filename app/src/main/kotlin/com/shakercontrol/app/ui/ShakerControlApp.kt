@@ -5,11 +5,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.shakercontrol.app.DeepLinkAction
 import com.shakercontrol.app.ui.components.ServiceModeBanner
 import com.shakercontrol.app.ui.components.SessionLeaseWarningBanner
 import com.shakercontrol.app.ui.components.StatusStrip
@@ -17,8 +19,15 @@ import com.shakercontrol.app.ui.navigation.AppNavHost
 import com.shakercontrol.app.ui.navigation.NavRoutes
 import kotlinx.coroutines.launch
 
+/**
+ * Main app composable with navigation drawer and status strip.
+ * @param initialRoute Optional route from deep link (e.g., "settings", "run", "pid/1")
+ * @param initialAction Optional action from deep link (e.g., enable service mode, connect)
+ */
 @Composable
 fun ShakerControlApp(
+    initialRoute: String? = null,
+    initialAction: DeepLinkAction? = null,
     viewModel: MainViewModel = hiltViewModel()
 ) {
     val navController = rememberNavController()
@@ -30,13 +39,55 @@ fun ShakerControlApp(
     val currentRoute = NavRoutes.fromRoute(currentBackStackEntry?.destination?.route)
     val screenTitle = currentRoute?.title ?: "Home"
 
+    // Navigate to initial route from deep link on first composition
+    LaunchedEffect(initialRoute) {
+        initialRoute?.let { route ->
+            // Small delay to ensure nav graph is ready
+            kotlinx.coroutines.delay(100)
+            navController.navigate(route) {
+                popUpTo(NavRoutes.Home.route) {
+                    saveState = true
+                }
+                launchSingleTop = true
+            }
+        }
+    }
+
+    // Handle initial action from deep link
+    LaunchedEffect(initialAction) {
+        initialAction?.let { action ->
+            kotlinx.coroutines.delay(100)
+            when (action) {
+                DeepLinkAction.ServiceModeEnable -> viewModel.enableServiceMode()
+                DeepLinkAction.ServiceModeDisable -> viewModel.disableServiceMode()
+                DeepLinkAction.ServiceModeToggle -> {
+                    if (systemStatus.isServiceModeEnabled) {
+                        viewModel.disableServiceMode()
+                    } else {
+                        viewModel.enableServiceMode()
+                    }
+                }
+                DeepLinkAction.Connect -> {
+                    navController.navigate(NavRoutes.Devices.route)
+                    // Trigger connect after navigating
+                    kotlinx.coroutines.delay(500)
+                    viewModel.connect()
+                }
+                DeepLinkAction.Disconnect -> viewModel.disconnect()
+                DeepLinkAction.Reconnect -> viewModel.reconnect()
+            }
+        }
+    }
+
     // Show back button only for sub-pages (not top-level drawer destinations)
     val canNavigateBack = currentRoute?.isTopLevel == false && navController.previousBackStackEntry != null
 
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet {
+            ModalDrawerSheet(
+                modifier = Modifier.testTag("NavigationDrawer")
+            ) {
                 NavigationDrawerContent(
                     currentRoute = currentRoute,
                     onNavigate = { route ->
@@ -48,13 +99,6 @@ fun ShakerControlApp(
                             restoreState = true
                         }
                         scope.launch { drawerState.close() }
-                    },
-                    onServiceModeToggle = {
-                        if (systemStatus.isServiceModeEnabled) {
-                            viewModel.disableServiceMode()
-                        } else {
-                            viewModel.enableServiceMode()
-                        }
                     },
                     isServiceModeEnabled = systemStatus.isServiceModeEnabled
                 )
@@ -71,8 +115,26 @@ fun ShakerControlApp(
                 screenTitle = screenTitle,
                 systemStatus = systemStatus,
                 onMenuClick = { scope.launch { drawerState.open() } },
-                onConnectionClick = { navController.navigate(NavRoutes.Devices.route) },
-                onAlarmsClick = { navController.navigate(NavRoutes.Alarms.route) },
+                onConnectionClick = {
+                    // Use same navigation pattern as drawer to avoid back stack issues
+                    navController.navigate(NavRoutes.Devices.route) {
+                        popUpTo(NavRoutes.Home.route) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+                onAlarmsClick = {
+                    // Use same navigation pattern as drawer to avoid back stack issues
+                    navController.navigate(NavRoutes.Alarms.route) {
+                        popUpTo(NavRoutes.Home.route) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
                 canNavigateBack = canNavigateBack,
                 onBackClick = { navController.popBackStack() }
             )
@@ -100,7 +162,6 @@ fun ShakerControlApp(
 private fun NavigationDrawerContent(
     currentRoute: NavRoutes?,
     onNavigate: (String) -> Unit,
-    onServiceModeToggle: () -> Unit,
     isServiceModeEnabled: Boolean
 ) {
     Spacer(modifier = Modifier.height(16.dp))
@@ -141,12 +202,15 @@ private fun NavigationDrawerContent(
         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
     )
 
-    NavigationDrawerItem(
-        label = { Text("I/O Control") },
-        selected = currentRoute == NavRoutes.Io,
-        onClick = { onNavigate(NavRoutes.Io.route) },
-        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-    )
+    // I/O Control only visible in service mode
+    if (isServiceModeEnabled) {
+        NavigationDrawerItem(
+            label = { Text("I/O Control") },
+            selected = currentRoute == NavRoutes.Io,
+            onClick = { onNavigate(NavRoutes.Io.route) },
+            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+        )
+    }
 
     NavigationDrawerItem(
         label = { Text("Diagnostics") },
@@ -159,24 +223,6 @@ private fun NavigationDrawerContent(
         label = { Text("Settings") },
         selected = currentRoute == NavRoutes.Settings,
         onClick = { onNavigate(NavRoutes.Settings.route) },
-        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-    )
-
-    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-    // Service mode toggle
-    NavigationDrawerItem(
-        label = {
-            Text(
-                text = if (isServiceModeEnabled) "Exit service mode" else "Service mode",
-                color = if (isServiceModeEnabled)
-                    MaterialTheme.colorScheme.error
-                else
-                    MaterialTheme.colorScheme.onSurface
-            )
-        },
-        selected = false,
-        onClick = onServiceModeToggle,
         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
     )
 }

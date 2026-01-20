@@ -5,6 +5,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -17,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -272,6 +274,10 @@ private fun SignalBars(
     }
 }
 
+/**
+ * MCU heartbeat chip with pulsing animation.
+ * Shows a beating heart icon when healthy to indicate real-time communication.
+ */
 @Composable
 private fun McuHeartbeatChip(
     heartbeatStatus: HeartbeatStatus,
@@ -289,17 +295,67 @@ private fun McuHeartbeatChip(
         HeartbeatStatus.MISSING -> SemanticColors.Alarm
     }
 
-    val secondaryText = when (heartbeatStatus) {
-        HeartbeatStatus.OK -> "${ageMs} ms"
-        HeartbeatStatus.STALE -> "Stale ${ageMs / 1000.0}s"
-        HeartbeatStatus.MISSING -> "Missing"
-    }
+    // Pulsing animation for the heartbeat dot - mimics actual heartbeat rhythm
+    val infiniteTransition = rememberInfiniteTransition(label = "heartbeat")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (heartbeatStatus == HeartbeatStatus.OK) 1.3f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 1000
+                1f at 0 using FastOutSlowInEasing
+                1.3f at 100 using FastOutSlowInEasing
+                1f at 200 using FastOutSlowInEasing
+                1.2f at 300 using FastOutSlowInEasing
+                1f at 400 using FastOutSlowInEasing
+                1f at 1000
+            },
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulse_scale"
+    )
+
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (heartbeatStatus == HeartbeatStatus.OK) 0.6f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 1000
+                1f at 0
+                0.6f at 100
+                1f at 200
+                0.7f at 300
+                1f at 400
+                1f at 1000
+            },
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulse_alpha"
+    )
 
     StatusChip(
-        label = "MCU: ${heartbeatStatus.displayName}",
-        secondaryText = secondaryText,
+        label = "MCU",
         backgroundColor = backgroundColor,
-        contentColor = contentColor
+        contentColor = contentColor,
+        icon = {
+            // Fixed-size container prevents layout shift during pulse animation
+            Box(
+                modifier = Modifier.size(14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .graphicsLayer {
+                            scaleX = pulseScale
+                            scaleY = pulseScale
+                            alpha = pulseAlpha
+                        }
+                        .clip(CircleShape)
+                        .background(contentColor)
+                )
+            }
+        }
     )
 }
 

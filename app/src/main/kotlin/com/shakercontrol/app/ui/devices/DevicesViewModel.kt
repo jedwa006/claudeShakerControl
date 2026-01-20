@@ -19,6 +19,7 @@ sealed class DevicesUiEvent {
     data class ConnectionLost(val deviceName: String, val willReconnect: Boolean) : DevicesUiEvent()
     data class ReconnectFailed(val deviceName: String) : DevicesUiEvent()
     data object ReconnectSucceeded : DevicesUiEvent()
+    data class ConnectedToKnownDevice(val deviceName: String) : DevicesUiEvent()
 }
 
 @HiltViewModel
@@ -164,6 +165,13 @@ class DevicesViewModel @Inject constructor(
             val lastDevice = lastConnectedDevice.value
             if (lastDevice != null && bleManager.connectionState.value == BleConnectionState.DISCONNECTED) {
                 connect(lastDevice.address, nameHint = lastDevice.name)
+                // Wait for connection and emit event for redirect countdown
+                bleManager.connectionState
+                    .filter { it == BleConnectionState.CONNECTED }
+                    .take(1)
+                    .collect {
+                        _uiEvents.emit(DevicesUiEvent.ConnectedToKnownDevice(lastDevice.name))
+                    }
             }
         }
     }
