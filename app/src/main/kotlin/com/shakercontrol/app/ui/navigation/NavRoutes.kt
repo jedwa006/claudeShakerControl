@@ -10,7 +10,7 @@ package com.shakercontrol.app.ui.navigation
 sealed class NavRoutes(val route: String, val title: String, val isTopLevel: Boolean = false) {
     data object Home : NavRoutes("home", "Home", isTopLevel = true)
     data object Run : NavRoutes("run", "Run", isTopLevel = true)
-    data object Devices : NavRoutes("devices", "Devices", isTopLevel = true)
+    data object Devices : NavRoutes("devices", "Devices")  // Accessed via Settings > Scan
     data object Alarms : NavRoutes("alarms", "Alarms", isTopLevel = true)
     data object Diagnostics : NavRoutes("diagnostics", "Diagnostics", isTopLevel = true)
     data object Settings : NavRoutes("settings", "Settings", isTopLevel = true)

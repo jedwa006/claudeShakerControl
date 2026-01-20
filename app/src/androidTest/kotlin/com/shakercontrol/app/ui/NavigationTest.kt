@@ -15,10 +15,16 @@ import org.junit.Test
  * These tests use MockMachineRepository (via TestRepositoryModule) so they
  * can run without real BLE hardware. The mock starts in CONNECTED (LIVE) state.
  *
+ * Note on drawer structure:
+ * - Home is only shown in drawer when disconnected (acts as landing/status screen)
+ * - Devices is accessed via Settings > Scan (not in drawer)
+ * - I/O Control is only visible in drawer when service mode is enabled
+ *
  * Test scenarios cover:
  * - Drawer navigation between top-level screens
  * - Back stack behavior after navigation
  * - Service mode toggle
+ * - Device management via Settings
  */
 @HiltAndroidTest
 class NavigationTest {
@@ -79,20 +85,62 @@ class NavigationTest {
     }
 
     @Test
-    fun drawerNavigation_toDevicesScreen() {
-        // Open drawer
+    fun settingsScreen_hasDeviceSection() {
+        // Navigate to Settings via drawer
         composeTestRule.onNodeWithContentDescription("Menu").performClick()
         composeTestRule.waitForIdle()
-
-        // Click Devices in drawer
         composeTestRule.onNode(
-            hasText("Devices") and hasAnyAncestor(hasTestTag("NavigationDrawer"))
+            hasText("Settings") and hasAnyAncestor(hasTestTag("NavigationDrawer"))
         ).performClick()
         composeTestRule.waitForIdle()
 
-        // Verify we're on Devices screen - check for screen-specific content
-        // The title "Devices" will show in the status strip
-        composeTestRule.onNodeWithText("Scan").assertIsDisplayed()
+        // Verify Device section is present in Settings
+        composeTestRule.onNodeWithText("Device").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Status").assertIsDisplayed()
+    }
+
+    @Test
+    fun settingsScreen_canNavigateToDevicesViaScan() {
+        // Navigate to Settings via drawer
+        composeTestRule.onNodeWithContentDescription("Menu").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNode(
+            hasText("Settings") and hasAnyAncestor(hasTestTag("NavigationDrawer"))
+        ).performClick()
+        composeTestRule.waitForIdle()
+
+        // Note: BleManager connection state is DISCONNECTED in tests (only MachineRepository is mocked)
+        // So Scan button should be visible (shown when BLE is disconnected)
+        composeTestRule.onNodeWithText("Scan").performClick()
+        composeTestRule.waitForIdle()
+
+        // Verify we're on Devices screen
+        // The title "Devices" will show in the status strip and back button appears
+        composeTestRule.onNodeWithContentDescription("Go back").assertIsDisplayed()
+    }
+
+    @Test
+    fun drawer_hidesHomeWhenConnected() {
+        // Mock starts connected, so Home should NOT be in drawer
+        composeTestRule.onNodeWithContentDescription("Menu").performClick()
+        composeTestRule.waitForIdle()
+
+        // Home should not exist in drawer when connected
+        composeTestRule.onNode(
+            hasText("Home") and hasAnyAncestor(hasTestTag("NavigationDrawer"))
+        ).assertDoesNotExist()
+    }
+
+    @Test
+    fun drawer_doesNotShowDevices() {
+        // Devices is no longer in drawer (accessed via Settings > Scan)
+        composeTestRule.onNodeWithContentDescription("Menu").performClick()
+        composeTestRule.waitForIdle()
+
+        // Devices should not exist in drawer
+        composeTestRule.onNode(
+            hasText("Devices") and hasAnyAncestor(hasTestTag("NavigationDrawer"))
+        ).assertDoesNotExist()
     }
 
     @Test
@@ -108,7 +156,8 @@ class NavigationTest {
         composeTestRule.waitForIdle()
 
         // Verify we're on Settings screen - check for settings-specific content
-        composeTestRule.onNodeWithText("Controller version").assertIsDisplayed()
+        // Service Mode section is always visible on Settings screen
+        composeTestRule.onNodeWithText("Service Mode").assertIsDisplayed()
     }
 
     @Test
@@ -146,7 +195,7 @@ class NavigationTest {
 
     @Test
     fun navigation_multipleDrawerNavigations_maintainsCorrectBackStack() {
-        // Navigate: Home → Run → Devices → Run
+        // Navigate: Run → Settings → Diagnostics → Run
         // Each drawer navigation should work correctly
 
         // 1. Go to Run
@@ -158,16 +207,26 @@ class NavigationTest {
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithText("Recipe").assertIsDisplayed()
 
-        // 2. Go to Devices
+        // 2. Go to Settings
         composeTestRule.onNodeWithContentDescription("Menu").performClick()
         composeTestRule.waitForIdle()
         composeTestRule.onNode(
-            hasText("Devices") and hasAnyAncestor(hasTestTag("NavigationDrawer"))
+            hasText("Settings") and hasAnyAncestor(hasTestTag("NavigationDrawer"))
         ).performClick()
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("Scan").assertIsDisplayed()
+        // Service Mode section is always visible on Settings screen
+        composeTestRule.onNodeWithText("Service Mode").assertIsDisplayed()
 
-        // 3. Go back to Run
+        // 3. Go to Diagnostics
+        composeTestRule.onNodeWithContentDescription("Menu").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNode(
+            hasText("Diagnostics") and hasAnyAncestor(hasTestTag("NavigationDrawer"))
+        ).performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("PID Controllers (RS-485)").assertIsDisplayed()
+
+        // 4. Go back to Run
         composeTestRule.onNodeWithContentDescription("Menu").performClick()
         composeTestRule.waitForIdle()
         composeTestRule.onNode(

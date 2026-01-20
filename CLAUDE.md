@@ -88,7 +88,7 @@ Test file: `app/src/androidTest/kotlin/com/shakercontrol/app/ui/NavigationTest.k
 
 Tests include:
 - Home screen verification
-- Drawer navigation (Run, Devices, Settings, I/O)
+- Drawer navigation (Run, Settings, I/O, Diagnostics)
 - Back stack behavior
 - Service mode toggle and UI changes
 
@@ -180,7 +180,7 @@ Use `adb shell uiautomator dump` to get fresh coordinates if layout changes.
 - "Disconnected" status: tap 862 108 → navigates to Devices
 - "Connected" status: tap 862 108 → navigates to Devices
 
-### Devices Screen
+### Devices Screen (accessed via Settings > Scan)
 - Reconnect button: tap 1863 242
 - Disconnect button: tap 1303 168 (same location as Reconnect)
 - Scan button: tap 1325 271
@@ -188,15 +188,23 @@ Use `adb shell uiautomator dump` to get fresh coordinates if layout changes.
 
 ### Navigation Drawer
 - Open: tap hamburger menu at 60 107, or swipe from x=0 to x=300 at y=400
-- Home: tap 270 219
+- Home: tap 270 219 (only visible when disconnected - serves as landing/status screen)
 - Run: tap 270 303
-- Devices: tap 270 387
-- Alarms: tap 270 471
-- I/O Control: tap 270 555 (only visible in service mode)
-- Diagnostics: tap 270 639
-- Settings: tap 270 723
+- Alarms: tap 270 387
+- I/O Control: tap 270 471 (only visible in service mode)
+- Diagnostics: tap 270 555
+- Settings: tap 270 639
 
-Note: Service mode toggle removed from drawer. Enable via Settings screen or deep link (`shaker://action/service-mode/enable`).
+**Removed from drawer:**
+- **Devices**: Now accessed via Settings > Scan button, or by clicking "Disconnected" status chip
+- **Service mode toggle**: Enable via Settings screen or deep link (`shaker://action/service-mode/enable`)
+
+### Settings Screen Device Management
+The Settings screen now includes a Device section with:
+- Connection status (Connected/Connecting/Disconnected)
+- Connected device name or last known device
+- Auto-reconnect toggle
+- Action buttons: Disconnect (when connected), Reconnect + Forget + Scan (when disconnected)
 
 ## Related Repositories
 - Firmware: `/tmp/NuNuCryoShaker` (ESP32-S3 BLE GATT server)

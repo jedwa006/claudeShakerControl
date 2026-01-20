@@ -74,7 +74,8 @@ fun AppNavHost(
 
         composable(NavRoutes.Settings.route) {
             SettingsScreen(
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToDevices = { navController.navigate(NavRoutes.Devices.route) }
             )
         }
 

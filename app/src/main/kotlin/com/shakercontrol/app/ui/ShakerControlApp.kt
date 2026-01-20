@@ -100,7 +100,8 @@ fun ShakerControlApp(
                         }
                         scope.launch { drawerState.close() }
                     },
-                    isServiceModeEnabled = systemStatus.isServiceModeEnabled
+                    isServiceModeEnabled = systemStatus.isServiceModeEnabled,
+                    isConnected = systemStatus.connectionState == com.shakercontrol.app.domain.model.ConnectionState.LIVE
                 )
             }
         }
@@ -162,7 +163,8 @@ fun ShakerControlApp(
 private fun NavigationDrawerContent(
     currentRoute: NavRoutes?,
     onNavigate: (String) -> Unit,
-    isServiceModeEnabled: Boolean
+    isServiceModeEnabled: Boolean,
+    isConnected: Boolean
 ) {
     Spacer(modifier = Modifier.height(16.dp))
 
@@ -174,24 +176,20 @@ private fun NavigationDrawerContent(
 
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-    NavigationDrawerItem(
-        label = { Text("Home") },
-        selected = currentRoute == NavRoutes.Home,
-        onClick = { onNavigate(NavRoutes.Home.route) },
-        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-    )
+    // Home only visible when disconnected (serves as landing/status screen)
+    if (!isConnected) {
+        NavigationDrawerItem(
+            label = { Text("Home") },
+            selected = currentRoute == NavRoutes.Home,
+            onClick = { onNavigate(NavRoutes.Home.route) },
+            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+        )
+    }
 
     NavigationDrawerItem(
         label = { Text("Run") },
         selected = currentRoute == NavRoutes.Run,
         onClick = { onNavigate(NavRoutes.Run.route) },
-        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-    )
-
-    NavigationDrawerItem(
-        label = { Text("Devices") },
-        selected = currentRoute == NavRoutes.Devices,
-        onClick = { onNavigate(NavRoutes.Devices.route) },
         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
     )
 
