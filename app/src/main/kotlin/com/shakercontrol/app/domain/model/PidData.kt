@@ -17,13 +17,25 @@ data class PidData(
     val ageMs: Int,  // How old the RS-485 reading is
     val capabilityLevel: CapabilityLevel,
     val alarmRelays: AlarmRelays = AlarmRelays.NONE,  // AL1/AL2 relay outputs
-    val probeError: ProbeError = ProbeError.NONE  // Probe connection errors
+    val probeError: ProbeError = ProbeError.NONE,  // Probe connection errors
+    val lazyPollActive: Boolean = false  // Whether lazy polling is active (affects thresholds)
 ) {
+    /**
+     * Stale threshold depends on polling mode:
+     * - Fast mode (300ms/controller): 1500ms threshold
+     * - Lazy mode (2000ms/controller): 7000ms threshold (3 controllers × 2000ms + margin)
+     */
+    private val effectiveStaleThreshold: Int
+        get() = if (lazyPollActive) STALE_THRESHOLD_LAZY_MS else STALE_THRESHOLD_MS
+
+    private val effectiveOfflineThreshold: Int
+        get() = if (lazyPollActive) OFFLINE_THRESHOLD_LAZY_MS else OFFLINE_THRESHOLD_MS
+
     val isStale: Boolean
-        get() = ageMs > STALE_THRESHOLD_MS
+        get() = ageMs > effectiveStaleThreshold
 
     val isOffline: Boolean
-        get() = ageMs > OFFLINE_THRESHOLD_MS
+        get() = ageMs > effectiveOfflineThreshold
 
     /**
      * True if any alarm relay (AL1 or AL2) is active.
@@ -44,11 +56,18 @@ data class PidData(
         get() = isOffline || isStale || hasFault || hasProbeError
 
     companion object {
+        // Fast mode thresholds (300ms per controller polling)
         // NOTE: Stale threshold increased from 500ms to 1500ms on 2026-01-19.
         // Firmware polls 3 controllers at 300ms intervals (~900ms round-trip per controller).
         // 500ms caused constant Online→Stale cycling. 1500ms provides margin for jitter.
         const val STALE_THRESHOLD_MS = 1500
         const val OFFLINE_THRESHOLD_MS = 3000
+
+        // Lazy mode thresholds (2000ms per controller polling)
+        // In lazy mode, firmware polls at 2000ms intervals (~6000ms round-trip for 3 controllers).
+        // We need much higher thresholds to avoid constant stale/offline flickering.
+        const val STALE_THRESHOLD_LAZY_MS = 7000   // 6000ms round-trip + 1000ms margin
+        const val OFFLINE_THRESHOLD_LAZY_MS = 12000 // Double the stale threshold
 
         // Sentinel values from Omron E5CC for probe errors
         // These are the descaled values in °C - firmware sends scaled x10
@@ -126,6 +145,25 @@ enum class PidMode {
             PROGRAM -> "Program"
         }
 }
+
+/**
+ * PID tuning parameters from READ_PID_PARAMS response.
+ */
+data class PidParams(
+    val controllerId: Int,
+    val pGain: Float,      // Proportional gain (descaled from x10)
+    val iTime: Int,        // Integral time in seconds (0 = disabled)
+    val dTime: Int         // Derivative time in seconds (0 = disabled)
+)
+
+/**
+ * Alarm limit setpoints from READ_ALARM_LIMITS response.
+ */
+data class AlarmLimits(
+    val controllerId: Int,
+    val alarm1: Float,     // Alarm 1 setpoint in °C (descaled from x10)
+    val alarm2: Float      // Alarm 2 setpoint in °C (descaled from x10)
+)
 
 /**
  * Capability levels as defined in docs/dashboard-sec-v1.md section 8.

@@ -38,6 +38,12 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
     private val _alarms = MutableStateFlow(createMockAlarms())
     override val alarms: StateFlow<List<Alarm>> = _alarms.asStateFlow()
 
+    private val _alarmHistory = MutableStateFlow<List<AlarmHistoryEntry>>(emptyList())
+    override val alarmHistory: StateFlow<List<AlarmHistoryEntry>> = _alarmHistory.asStateFlow()
+
+    private val _unacknowledgedAlarmBits = MutableStateFlow(0)
+    override val unacknowledgedAlarmBits: StateFlow<Int> = _unacknowledgedAlarmBits.asStateFlow()
+
     private val _ioStatus = MutableStateFlow(IoStatus(digitalInputs = 0b00000101, relayOutputs = 0b00000001))
     override val ioStatus: StateFlow<IoStatus> = _ioStatus.asStateFlow()
 
@@ -384,6 +390,82 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
         return Result.success(Unit)
     }
 
+    override suspend fun requestPvSvRefresh(controllerId: Int): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        delay(100)
+        return Result.success(Unit)
+    }
+
+    override suspend fun setPidParams(
+        controllerId: Int,
+        pGain: Float,
+        iTime: Int,
+        dTime: Int
+    ): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        delay(200)
+        return Result.success(Unit)
+    }
+
+    override suspend fun readPidParams(controllerId: Int): Result<PidParams> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        delay(200)
+        // Return mock PID parameters
+        return Result.success(PidParams(
+            controllerId = controllerId,
+            pGain = 10.0f,
+            iTime = 120,
+            dTime = 30
+        ))
+    }
+
+    override suspend fun startAutotune(controllerId: Int): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        delay(200)
+        return Result.success(Unit)
+    }
+
+    override suspend fun stopAutotune(controllerId: Int): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        delay(200)
+        return Result.success(Unit)
+    }
+
+    override suspend fun setAlarmLimits(
+        controllerId: Int,
+        alarm1: Float,
+        alarm2: Float
+    ): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        delay(200)
+        return Result.success(Unit)
+    }
+
+    override suspend fun readAlarmLimits(controllerId: Int): Result<AlarmLimits> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        delay(200)
+        // Return mock alarm limits
+        return Result.success(AlarmLimits(
+            controllerId = controllerId,
+            alarm1 = 50.0f,
+            alarm2 = -50.0f
+        ))
+    }
+
     override suspend fun acknowledgeAlarm(alarmId: String): Result<Unit> {
         if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
             return Result.failure(IllegalStateException("Not connected"))
@@ -416,6 +498,15 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
         }
         _alarms.value = currentAlarms
         return Result.success(Unit)
+    }
+
+    override suspend fun acknowledgeAlarmBits(bits: Int) {
+        _unacknowledgedAlarmBits.value = _unacknowledgedAlarmBits.value and bits.inv()
+    }
+
+    override suspend fun clearAlarmHistory() {
+        _alarmHistory.value = emptyList()
+        _unacknowledgedAlarmBits.value = 0
     }
 
     override suspend fun setRelay(channel: Int, on: Boolean): Result<Unit> {
@@ -506,5 +597,108 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
     override suspend fun clearCapabilityOverrides() {
         _capabilityOverrides.value = null
         _systemStatus.value = _systemStatus.value.copy(capabilities = SubsystemCapabilities.DEFAULT)
+    }
+
+    // Mock register storage for testing
+    private val mockRegisters = mutableMapOf<Pair<Int, Int>, Int>()
+
+    override suspend fun readRegisters(controllerId: Int, startAddress: Int, count: Int): Result<List<Int>> {
+        delay(100) // Simulate Modbus delay
+        val values = (0 until count).map { offset ->
+            mockRegisters[Pair(controllerId, startAddress + offset)] ?: 0
+        }
+        return Result.success(values)
+    }
+
+    override suspend fun writeRegister(controllerId: Int, address: Int, value: Int): Result<Unit> {
+        delay(100) // Simulate Modbus delay
+        mockRegisters[Pair(controllerId, address)] = value
+        return Result.success(Unit)
+    }
+
+    // Mock idle timeout storage
+    private var mockIdleTimeout = 5 // Default 5 minutes
+    private val _mcuIdleTimeoutMinutes = MutableStateFlow<Int?>(5)
+    override val mcuIdleTimeoutMinutes: StateFlow<Int?> = _mcuIdleTimeoutMinutes.asStateFlow()
+
+    override suspend fun setIdleTimeout(minutes: Int): Result<Unit> {
+        delay(50) // Simulate command delay
+        mockIdleTimeout = minutes
+        _mcuIdleTimeoutMinutes.value = minutes
+        return Result.success(Unit)
+    }
+
+    override suspend fun getIdleTimeout(): Result<Int> {
+        delay(50) // Simulate command delay
+        return Result.success(mockIdleTimeout)
+    }
+
+    // ==========================================
+    // Safety Gate Commands (Mock Implementation)
+    // ==========================================
+
+    // Mock storage for capabilities and safety gates
+    private val mockCapabilities = mutableMapOf(
+        0 to 1,  // PID1 = OPTIONAL
+        1 to 2,  // PID2 = REQUIRED
+        2 to 2,  // PID3 = REQUIRED
+        3 to 2,  // E-Stop = REQUIRED (immutable)
+        4 to 2,  // Door = REQUIRED
+        5 to 1,  // LN2 = OPTIONAL
+        6 to 2   // Motor = REQUIRED
+    )
+
+    private var mockGateEnableMask = 0x01FF  // All gates enabled by default
+    private var mockGateStatusMask = 0x01FF  // All gates satisfied by default
+
+    override suspend fun getCapabilities(): Result<Map<Int, Int>> {
+        delay(50) // Simulate command delay
+        return Result.success(mockCapabilities.toMap())
+    }
+
+    override suspend fun setCapability(subsystemId: Int, level: Int): Result<Unit> {
+        delay(50) // Simulate command delay
+
+        // E-Stop capability cannot be changed
+        if (subsystemId == 3) {
+            return Result.failure(IllegalArgumentException("E-Stop capability cannot be changed"))
+        }
+
+        if (subsystemId !in 0..6) {
+            return Result.failure(IllegalArgumentException("Invalid subsystem ID: $subsystemId"))
+        }
+
+        if (level !in 0..2) {
+            return Result.failure(IllegalArgumentException("Invalid capability level: $level"))
+        }
+
+        mockCapabilities[subsystemId] = level
+        return Result.success(Unit)
+    }
+
+    override suspend fun getSafetyGates(): Result<Pair<Int, Int>> {
+        delay(50) // Simulate command delay
+        return Result.success(Pair(mockGateEnableMask, mockGateStatusMask))
+    }
+
+    override suspend fun setSafetyGate(gateId: Int, enabled: Boolean): Result<Unit> {
+        delay(50) // Simulate command delay
+
+        // E-Stop gate cannot be bypassed
+        if (gateId == 0 && !enabled) {
+            return Result.failure(IllegalArgumentException("E-Stop gate cannot be bypassed"))
+        }
+
+        if (gateId !in 0..8) {
+            return Result.failure(IllegalArgumentException("Invalid gate ID: $gateId"))
+        }
+
+        mockGateEnableMask = if (enabled) {
+            mockGateEnableMask or (1 shl gateId)
+        } else {
+            mockGateEnableMask and (1 shl gateId).inv()
+        }
+
+        return Result.success(Unit)
     }
 }

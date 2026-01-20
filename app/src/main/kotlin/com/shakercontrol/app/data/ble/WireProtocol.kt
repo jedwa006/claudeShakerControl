@@ -237,6 +237,60 @@ object CommandPayloadBuilder {
         byteArrayOf(controllerId.toByte(), mode.code)
 
     /**
+     * REQUEST_PV_SV_REFRESH payload: controller_id(u8 1..3)
+     * Forces an immediate Modbus poll of the controller.
+     */
+    fun requestPvSvRefresh(controllerId: Int): ByteArray =
+        byteArrayOf(controllerId.toByte())
+
+    /**
+     * SET_PID_PARAMS payload: controller_id(u8), p_gain_x10(i16), i_time(u16), d_time(u16)
+     */
+    fun setPidParams(controllerId: Int, pGainX10: Short, iTime: Int, dTime: Int): ByteArray =
+        ByteBuffer.allocate(7)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .put(controllerId.toByte())
+            .putShort(pGainX10)
+            .putShort(iTime.toShort())
+            .putShort(dTime.toShort())
+            .array()
+
+    /**
+     * READ_PID_PARAMS payload: controller_id(u8)
+     */
+    fun readPidParams(controllerId: Int): ByteArray =
+        byteArrayOf(controllerId.toByte())
+
+    /**
+     * START_AUTOTUNE payload: controller_id(u8)
+     */
+    fun startAutotune(controllerId: Int): ByteArray =
+        byteArrayOf(controllerId.toByte())
+
+    /**
+     * STOP_AUTOTUNE payload: controller_id(u8)
+     */
+    fun stopAutotune(controllerId: Int): ByteArray =
+        byteArrayOf(controllerId.toByte())
+
+    /**
+     * SET_ALARM_LIMITS payload: controller_id(u8), alarm1_x10(i16), alarm2_x10(i16)
+     */
+    fun setAlarmLimits(controllerId: Int, alarm1X10: Short, alarm2X10: Short): ByteArray =
+        ByteBuffer.allocate(5)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .put(controllerId.toByte())
+            .putShort(alarm1X10)
+            .putShort(alarm2X10)
+            .array()
+
+    /**
+     * READ_ALARM_LIMITS payload: controller_id(u8)
+     */
+    fun readAlarmLimits(controllerId: Int): ByteArray =
+        byteArrayOf(controllerId.toByte())
+
+    /**
      * PAUSE_RUN payload: session_id(u32)
      */
     fun pauseRun(sessionId: Int): ByteArray =
@@ -259,9 +313,14 @@ object CommandPayloadBuilder {
 object TelemetryParser {
     /**
      * Parse TELEMETRY_SNAPSHOT payload.
+     *
+     * Telemetry structure:
+     * - wire_telemetry_header_t (13 bytes): timestamp, di, ro, alarm, controller_count
+     * - controller_data (N × 10 bytes each)
+     * - wire_telemetry_run_state_t (16 bytes): machine_state, timing, lazy_poll, etc.
      */
     fun parse(payload: ByteArray): TelemetrySnapshot? {
-        if (payload.size < 13) return null // Minimum: timestamp + di + ro + alarm + count
+        if (payload.size < 13) return null // Minimum: header only
 
         val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
 
@@ -286,12 +345,37 @@ object TelemetryParser {
             )
         }
 
+        // Parse extended run state if present (16 bytes)
+        var runState: RunStateData? = null
+        if (buffer.remaining() >= 16) {
+            val machineState = buffer.get().toInt() and 0xFF
+            val runElapsedMs = buffer.int.toLong() and 0xFFFFFFFFL
+            val runRemainingMs = buffer.int.toLong() and 0xFFFFFFFFL
+            val targetTempX10 = buffer.short
+            val recipeStep = buffer.get().toInt() and 0xFF
+            val interlockBits = buffer.get().toInt() and 0xFF
+            val lazyPollActive = buffer.get().toInt() and 0xFF
+            val idleTimeoutMin = buffer.get().toInt() and 0xFF
+
+            runState = RunStateData(
+                machineState = machineState,
+                runElapsedMs = runElapsedMs,
+                runRemainingMs = runRemainingMs,
+                targetTempX10 = targetTempX10,
+                recipeStep = recipeStep,
+                interlockBits = interlockBits,
+                lazyPollActive = lazyPollActive != 0,
+                idleTimeoutMin = idleTimeoutMin
+            )
+        }
+
         return TelemetrySnapshot(
             timestampMs = timestampMs,
             diBits = diBits,
             roBits = roBits,
             alarmBits = alarmBits,
-            controllers = controllers
+            controllers = controllers,
+            runState = runState
         )
     }
 
@@ -300,8 +384,25 @@ object TelemetryParser {
         val diBits: Int,
         val roBits: Int,
         val alarmBits: Long,
-        val controllers: List<ControllerData>
+        val controllers: List<ControllerData>,
+        val runState: RunStateData? = null
     )
+
+    /**
+     * Extended run state data from wire_telemetry_run_state_t (16 bytes)
+     */
+    data class RunStateData(
+        val machineState: Int,
+        val runElapsedMs: Long,
+        val runRemainingMs: Long,
+        val targetTempX10: Short,
+        val recipeStep: Int,
+        val interlockBits: Int,
+        val lazyPollActive: Boolean,
+        val idleTimeoutMin: Int
+    ) {
+        val targetTemp: Float get() = targetTempX10 / 10f
+    }
 
     data class ControllerData(
         val controllerId: Int,

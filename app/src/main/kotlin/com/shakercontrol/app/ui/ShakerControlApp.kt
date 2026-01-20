@@ -75,6 +75,14 @@ fun ShakerControlApp(
                 }
                 DeepLinkAction.Disconnect -> viewModel.disconnect()
                 DeepLinkAction.Reconnect -> viewModel.reconnect()
+
+                // Test actions for automated testing
+                is DeepLinkAction.SetRelay -> viewModel.setRelay(action.channel, action.on)
+                is DeepLinkAction.SetCapability -> viewModel.setCapability(action.subsystemId, action.level)
+                is DeepLinkAction.SetSafetyGate -> viewModel.setSafetyGate(action.gateId, action.enabled)
+                DeepLinkAction.ToggleLight -> viewModel.toggleLight()
+                DeepLinkAction.ToggleDoor -> viewModel.toggleDoor()
+                DeepLinkAction.StartChilldown -> viewModel.startChilldown()
             }
         }
     }

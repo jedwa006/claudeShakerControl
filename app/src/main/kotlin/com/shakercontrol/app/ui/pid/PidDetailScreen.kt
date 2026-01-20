@@ -6,6 +6,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,6 +37,7 @@ import kotlinx.coroutines.flow.collectLatest
 fun PidDetailScreen(
     pidId: Int,
     onNavigateBack: () -> Unit,
+    onNavigateToRegisters: () -> Unit = {},
     viewModel: PidDetailViewModel = hiltViewModel()
 ) {
     val pidData by viewModel.getPidData(pidId).collectAsStateWithLifecycle(initialValue = null)
@@ -79,6 +81,7 @@ fun PidDetailScreen(
             isExecutingCommand = isExecutingCommand,
             onSetSetpoint = { setpoint -> viewModel.setSetpoint(pidId, setpoint) },
             onSetMode = { mode -> viewModel.setMode(pidId, mode) },
+            onNavigateToRegisters = onNavigateToRegisters,
             modifier = Modifier.padding(paddingValues)
         )
     }
@@ -92,6 +95,7 @@ private fun PidDetailContent(
     isExecutingCommand: Boolean,
     onSetSetpoint: (Float) -> Unit,
     onSetMode: (PidMode) -> Unit,
+    onNavigateToRegisters: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val pidNames = mapOf(
@@ -242,19 +246,34 @@ private fun PidDetailContent(
             onSetMode = onSetMode
         )
 
-        // Modbus register map placeholder
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Modbus register map",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "Register map coming in future release",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+        // Modbus register map - navigate to register editor
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onNavigateToRegisters
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Modbus register map",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = if (isConnected) "View and edit controller registers" else "Connect to view registers",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = "Open register editor",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -489,7 +508,8 @@ private fun PidDetailScreenPreview() {
                 connectionState = ConnectionState.LIVE,
                 isExecutingCommand = false,
                 onSetSetpoint = {},
-                onSetMode = {}
+                onSetMode = {},
+                onNavigateToRegisters = {}
             )
         }
     }
@@ -518,7 +538,8 @@ private fun PidDetailScreenDisconnectedPreview() {
                 connectionState = ConnectionState.DISCONNECTED,
                 isExecutingCommand = false,
                 onSetSetpoint = {},
-                onSetMode = {}
+                onSetMode = {},
+                onNavigateToRegisters = {}
             )
         }
     }

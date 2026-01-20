@@ -992,3 +992,129 @@ Implemented in both `BleMachineRepository` and `MockMachineRepository`.
 ### Known Issues Resolved
 - PID stale cycling: Was caused by 500ms threshold vs 900ms RS-485 poll interval → fixed with 1500ms threshold
 - Probe error not detected: Was caused by 3000°C threshold vs ~800°C E5CC error value → fixed with 500°C threshold
+
+---
+
+## Lazy Polling Integration
+
+**Date:** 2025-01-20
+**Status:** App-side complete, pending firmware telemetry extension
+
+### Overview
+Implemented lazy polling feature to reduce RS-485 coil whine when system is idle. The MCU reduces PID controller polling frequency after a configurable idle timeout.
+
+### App-Side Implementation (Complete)
+
+#### Commands Added
+- `SET_IDLE_TIMEOUT (0x0040)`: Set idle timeout in minutes (0=disabled, 1-255=enabled)
+- `GET_IDLE_TIMEOUT (0x0041)`: Query current idle timeout from MCU
+
+#### Files Modified
+- `BleConstants.kt`: Added command IDs
+- `MachineRepository.kt`: Added interface methods
+  ```kotlin
+  val mcuIdleTimeoutMinutes: StateFlow<Int?>
+  suspend fun setIdleTimeout(minutes: Int): Result<Unit>
+  suspend fun getIdleTimeout(): Result<Int>
+  ```
+- `BleMachineRepository.kt`: Full implementation with command sending
+- `MockMachineRepository.kt`: Mock implementation
+- `SettingsViewModel.kt`: UI binding with MCU sync on connect
+- `SettingsScreen.kt`: Lazy Polling section with toggle and timeout picker
+- `DiagnosticsScreen.kt`: Added "RS-485 Polling" card showing current state
+
+#### Telemetry Parsing (Ready)
+- `WireProtocol.kt`: Added `RunStateData` parsing for 16-byte `wire_telemetry_run_state_t`
+- Fields parsed: `lazyPollActive` (bool), `idleTimeoutMin` (u8)
+- App preserves local values when firmware doesn't send extended telemetry
+
+#### UI
+- **Settings → Lazy Polling**: Toggle + dropdown (1-60 minutes)
+- **Diagnostics → RS-485 Polling card**: Shows FAST/SLOW chip, polling mode, idle timeout
+
+### MCU as Source of Truth (2025-01-20 Update)
+
+**Issue:** When MCU reboots, app showed stale idle timeout (from local prefs) instead of MCU's actual value.
+
+**Fix:** App now queries GET_IDLE_TIMEOUT on connect to sync from MCU.
+
+In `BleMachineRepository.kt`:
+```kotlin
+private fun queryMcuIdleTimeout() {
+    scope.launch {
+        val result = getIdleTimeout()
+        result.onSuccess { minutes ->
+            _mcuIdleTimeoutMinutes.value = minutes
+            _systemStatus.value = currentStatus.copy(idleTimeoutMinutes = minutes)
+        }
+    }
+}
+```
+
+Called from `openSession()` after session established.
+
+**Design principle:** MCU is authoritative. App only:
+- Sends SET_IDLE_TIMEOUT commands
+- Queries GET_IDLE_TIMEOUT on connect
+- Displays MCU's reported state
+
+### Firmware v0.3.7+ Integration (2026-01-20)
+
+**Firmware changes (v0.3.7-v0.3.10):**
+- v0.3.7: Bug fix - KEEPALIVE no longer resets idle timer
+- v0.3.8: Added `lazy_poll_active` and `idle_timeout_min` to telemetry
+- v0.3.9: Added reserved byte to complete 16-byte run state
+- v0.3.10: Adjusted stale/offline thresholds for lazy mode stability
+- New command IDs: `SET_LAZY_POLL` (0x0060), `GET_LAZY_POLL` (0x0061)
+- New payload format: 2 bytes `[enable (u8), timeout_min (u8)]`
+- NVS persistence for idle timeout setting
+
+**App changes:**
+- Updated `BleConstants.kt`: Added both new (0x0060/0x0061) and legacy (0x0040/0x0041) command IDs
+- Updated `BleMachineRepository.kt`:
+  - `setIdleTimeout()` tries new format first, falls back to legacy
+  - `getIdleTimeout()` tries new format first, falls back to legacy
+  - Passes `lazyPollActive` to PidData for dynamic thresholds
+- Updated `PidData.kt`:
+  - Added `lazyPollActive` field
+  - Dynamic stale/offline thresholds based on polling mode:
+    - Fast mode: STALE=1500ms, OFFLINE=3000ms
+    - Lazy mode: STALE=7000ms, OFFLINE=12000ms
+
+**Testing:**
+1. Connect app with lazy polling enabled (1 min timeout)
+2. Wait 1+ minutes with no user interaction
+3. Verify Diagnostics shows "SLOW" and `lazy_poll_active = 1`
+4. Send any user command → verify returns to "FAST" mode
+
+### Alarm History Tracking (Complete)
+
+#### Purpose
+MCU reports real-time `alarm_bits` (not latched). App must track alarm transitions for:
+- Catching transient alarms that clear before user notices
+- Showing alarm history for debugging
+
+#### Implementation
+- `Alarm.kt`: Added `AlarmHistoryEntry`, `AlarmBitDefinitions`
+- `MachineRepository.kt`: Added `alarmHistory`, `unacknowledgedAlarmBits`, `acknowledgeAlarmBits()`, `clearAlarmHistory()`
+- `BleMachineRepository.kt`: `trackAlarmTransitions()` records all bit changes
+
+### Files Summary
+| File | Changes |
+|------|---------|
+| `BleConstants.kt` | Command IDs 0x0040, 0x0041 |
+| `WireProtocol.kt` | `RunStateData` parsing with lazy polling fields |
+| `MachineRepository.kt` | Lazy polling + alarm history interfaces |
+| `BleMachineRepository.kt` | Full implementation |
+| `MockMachineRepository.kt` | Mock implementations |
+| `SettingsViewModel.kt` | MCU sync, setters |
+| `SettingsScreen.kt` | Lazy Polling UI section |
+| `DiagnosticsScreen.kt` | RS-485 Polling status card |
+| `SystemStatus.kt` | `lazyPollActive`, `idleTimeoutMinutes` fields |
+| `Alarm.kt` | `AlarmHistoryEntry`, `AlarmBitDefinitions` |
+
+### Testing
+- All 101 unit tests passing
+- SET_IDLE_TIMEOUT command confirmed working (ACK received)
+- Value persists in app after setting
+- Firmware not sending extended telemetry (known issue → firmware handoff)

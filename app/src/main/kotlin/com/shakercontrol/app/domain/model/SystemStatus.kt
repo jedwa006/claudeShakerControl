@@ -18,7 +18,10 @@ data class SystemStatus(
     val capabilities: SubsystemCapabilities = SubsystemCapabilities.DEFAULT,
     val sessionLeaseMs: Int = DEFAULT_LEASE_MS,
     val sessionLeaseAgeMs: Long = 0L,
-    val rssiHistory: List<Int> = emptyList()
+    val rssiHistory: List<Int> = emptyList(),
+    // Lazy polling state (from telemetry run state)
+    val lazyPollActive: Boolean = false,
+    val idleTimeoutMinutes: Int = 0
 ) {
     val isMcuHeartbeatStale: Boolean
         get() = mcuHeartbeatAgeMs > MCU_STALE_THRESHOLD_MS
@@ -104,7 +107,9 @@ data class SystemStatus(
             capabilities = SubsystemCapabilities.DEFAULT,
             sessionLeaseMs = DEFAULT_LEASE_MS,
             sessionLeaseAgeMs = 0L,
-            rssiHistory = emptyList()
+            rssiHistory = emptyList(),
+            lazyPollActive = false,
+            idleTimeoutMinutes = 0
         )
     }
 }

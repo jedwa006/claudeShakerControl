@@ -20,6 +20,9 @@ sealed class NavRoutes(val route: String, val title: String, val isTopLevel: Boo
     data object Pid2 : NavRoutes("pid/2", "PID 2")
     data object Pid3 : NavRoutes("pid/3", "PID 3")
 
+    // Register editor - uses navigation argument for controller ID
+    data object RegisterEditor : NavRoutes("registers/{controllerId}", "Register Editor")
+
     companion object {
         fun fromRoute(route: String?): NavRoutes? = when {
             route == null -> null
@@ -33,7 +36,20 @@ sealed class NavRoutes(val route: String, val title: String, val isTopLevel: Boo
             route == Pid1.route -> Pid1
             route == Pid2.route -> Pid2
             route == Pid3.route -> Pid3
+            route.startsWith("registers/") -> RegisterEditor
             else -> null
+        }
+
+        fun registersRoute(controllerId: Int): String = "registers/$controllerId"
+
+        /**
+         * Parse a deep link route that may have parameters.
+         * Returns the navigation route string for NavController.navigate().
+         * E.g., "registers/2" stays as "registers/2" since it's already valid.
+         */
+        fun parseDeepLinkRoute(host: String, path: String?): String {
+            val pathStr = path?.removePrefix("/") ?: ""
+            return if (pathStr.isNotEmpty()) "$host/$pathStr" else host
         }
     }
 }

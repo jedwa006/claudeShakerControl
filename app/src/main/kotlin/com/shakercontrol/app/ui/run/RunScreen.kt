@@ -41,6 +41,14 @@ fun RunScreen(
     val isExecutingCommand by viewModel.isExecutingCommand.collectAsStateWithLifecycle()
     val startGating by viewModel.startGating.collectAsStateWithLifecycle()
     val displaySlots by viewModel.displaySlots.collectAsStateWithLifecycle()
+    val areHeatersEnabled by viewModel.areHeatersEnabled.collectAsStateWithLifecycle()
+    val isCoolingEnabled by viewModel.isCoolingEnabled.collectAsStateWithLifecycle()
+    val pendingAction by viewModel.pendingAction.collectAsStateWithLifecycle()
+    val isLightOn by viewModel.isLightOn.collectAsStateWithLifecycle()
+    val isDoorLocked by viewModel.isDoorLocked.collectAsStateWithLifecycle()
+    val isChilldownActive by viewModel.isChilldownActive.collectAsStateWithLifecycle()
+    val isStartAfterChillEnabled by viewModel.isStartAfterChillEnabled.collectAsStateWithLifecycle()
+    val canChilldown by viewModel.canChilldown.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
     var showStopDialog by remember { mutableStateOf(false) }
@@ -72,6 +80,15 @@ fun RunScreen(
         )
     }
 
+    // Safety warning dialog for enabling controllers with probe errors
+    pendingAction?.let { action ->
+        ProbeErrorWarningDialog(
+            action = action,
+            onDismiss = viewModel::cancelPendingAction,
+            onConfirm = viewModel::confirmPendingAction
+        )
+    }
+
     Scaffold(
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState) { data ->
@@ -94,14 +111,28 @@ fun RunScreen(
             isExecutingCommand = isExecutingCommand,
             startGating = startGating,
             displaySlots = displaySlots,
+            areHeatersEnabled = areHeatersEnabled,
+            isCoolingEnabled = isCoolingEnabled,
+            isLightOn = isLightOn,
+            isDoorLocked = isDoorLocked,
+            isChilldownActive = isChilldownActive,
+            isStartAfterChillEnabled = isStartAfterChillEnabled,
+            canChilldown = canChilldown,
             onRecipeChange = viewModel::updateRecipe,
             onStart = viewModel::startRun,
             onPause = viewModel::pauseRun,
             onResume = viewModel::resumeRun,
             onStop = { showStopDialog = true },
+            onToggleHeaters = viewModel::toggleHeaters,
+            onToggleCooling = viewModel::toggleCooling,
+            onToggleLight = viewModel::toggleLight,
+            onToggleDoor = viewModel::toggleDoor,
+            onChilldown = viewModel::startChilldown,
+            onToggleStartAfterChill = viewModel::setStartAfterChill,
             onNavigateToPid = onNavigateToPid,
             onNavigateToIo = onNavigateToIo,
             onDisplaySlotClick = { /* TODO: Open slot config dialog */ },
+            onWakeFromLazy = viewModel::wakeFromLazyMode,
             modifier = Modifier.padding(paddingValues)
         )
     }
@@ -132,14 +163,28 @@ private fun RunScreenContent(
     isExecutingCommand: Boolean,
     startGating: StartGatingResult,
     displaySlots: List<DisplaySlot>,
+    areHeatersEnabled: Boolean,
+    isCoolingEnabled: Boolean,
+    isLightOn: Boolean = false,
+    isDoorLocked: Boolean = false,
+    isChilldownActive: Boolean = false,
+    isStartAfterChillEnabled: Boolean = false,
+    canChilldown: Boolean = false,
     onRecipeChange: (Recipe) -> Unit,
     onStart: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
+    onToggleHeaters: () -> Unit,
+    onToggleCooling: () -> Unit,
+    onToggleLight: () -> Unit = {},
+    onToggleDoor: () -> Unit = {},
+    onChilldown: () -> Unit = {},
+    onToggleStartAfterChill: (Boolean) -> Unit = {},
     onNavigateToPid: (Int) -> Unit,
     onNavigateToIo: () -> Unit,
     onDisplaySlotClick: (Int) -> Unit,
+    onWakeFromLazy: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     // Main content area - two columns
@@ -162,7 +207,16 @@ private fun RunScreenContent(
                 isRunning = systemStatus.machineState.isOperating,
                 interlockStatus = interlockStatus,
                 isServiceMode = systemStatus.isServiceModeEnabled,
-                onRecipeChange = onRecipeChange
+                isConnected = systemStatus.connectionState == ConnectionState.LIVE,
+                isLightOn = isLightOn,
+                isDoorLocked = isDoorLocked,
+                areHeatersEnabled = areHeatersEnabled,
+                isCoolingEnabled = isCoolingEnabled,
+                onRecipeChange = onRecipeChange,
+                onToggleLight = onToggleLight,
+                onToggleDoor = onToggleDoor,
+                onToggleHeaters = onToggleHeaters,
+                onToggleCooling = onToggleCooling
                 // No weight modifier - use only needed space
             )
 
@@ -174,10 +228,15 @@ private fun RunScreenContent(
                 connectionState = systemStatus.connectionState,
                 isExecutingCommand = isExecutingCommand,
                 startGating = startGating,
+                isChilldownActive = isChilldownActive,
+                isStartAfterChillEnabled = isStartAfterChillEnabled,
+                canChilldown = canChilldown,
                 onStart = onStart,
                 onPause = onPause,
                 onResume = onResume,
-                onStop = onStop
+                onStop = onStop,
+                onChilldown = onChilldown,
+                onToggleStartAfterChill = onToggleStartAfterChill
             )
         }
 
@@ -189,7 +248,8 @@ private fun RunScreenContent(
             // PID temperatures - compact grid
             TemperaturesSection(
                 pidData = pidData,
-                onNavigateToPid = onNavigateToPid
+                onNavigateToPid = onNavigateToPid,
+                onWakeFromLazy = onWakeFromLazy
             )
 
             // Display slots - configurable visualization panels
@@ -413,6 +473,64 @@ private fun StopConfirmationDialog(
     )
 }
 
+/**
+ * Warning dialog when enabling a controller that has a probe error.
+ * This is a safety confirmation - enabling a controller with a disconnected
+ * or faulty probe may result in incorrect temperature control.
+ */
+@Composable
+private fun ProbeErrorWarningDialog(
+    action: PendingAction,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val (title, message) = when (action) {
+        is PendingAction.EnableHeatersWithProbeError -> {
+            val pidNames = action.affectedPids.joinToString(", ") { it.name }
+            val errorTypes = action.affectedPids.map { it.probeError.shortName }.distinct().joinToString("/")
+            "Enable heaters with probe error?" to
+                "The following controllers have probe errors ($errorTypes): $pidNames\n\n" +
+                "Enabling these controllers may result in incorrect temperature control. " +
+                "The probe may be disconnected or reading out of range.\n\n" +
+                "Are you sure you want to enable anyway?"
+        }
+        is PendingAction.EnableCoolingWithProbeError -> {
+            val errorType = action.pid.probeError.shortName
+            "Enable LN2 cooling with probe error?" to
+                "${action.pid.name} has a probe error ($errorType).\n\n" +
+                "Enabling LN2 cooling without a valid temperature reading may result in " +
+                "over-cooling or inability to maintain target temperature.\n\n" +
+                "Are you sure you want to enable anyway?"
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = title,
+                color = MaterialTheme.colorScheme.error
+            )
+        },
+        text = { Text(message) },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text("Enable Anyway")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
 @Preview(widthDp = 1200, heightDp = 700)
 @Composable
 private fun RunScreenPreview() {
@@ -461,14 +579,19 @@ private fun RunScreenPreview() {
                 isExecutingCommand = false,
                 startGating = StartGatingResult.OK,
                 displaySlots = emptyList(),
+                areHeatersEnabled = true,
+                isCoolingEnabled = true,
                 onRecipeChange = {},
                 onStart = {},
                 onPause = {},
                 onResume = {},
                 onStop = {},
+                onToggleHeaters = {},
+                onToggleCooling = {},
                 onNavigateToPid = {},
                 onNavigateToIo = {},
-                onDisplaySlotClick = {}
+                onDisplaySlotClick = {},
+                onWakeFromLazy = {}
             )
         }
     }
@@ -518,14 +641,19 @@ private fun RunScreenServiceModePreview() {
                     DisplaySlot(0, DisplaySource.TEMPERATURE_HISTORY, "Temperature Plot"),
                     DisplaySlot(1, DisplaySource.EMPTY, "Available")
                 ),
+                areHeatersEnabled = true,
+                isCoolingEnabled = false,  // Show cooling disabled for contrast
                 onRecipeChange = {},
                 onStart = {},
                 onPause = {},
                 onResume = {},
                 onStop = {},
+                onToggleHeaters = {},
+                onToggleCooling = {},
                 onNavigateToPid = {},
                 onNavigateToIo = {},
-                onDisplaySlotClick = {}
+                onDisplaySlotClick = {},
+                onWakeFromLazy = {}
             )
         }
     }

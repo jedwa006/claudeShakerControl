@@ -148,6 +148,8 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradle
 ### Deep Links (Debug Navigation)
 The app supports deep links for programmatic navigation and actions. Use these via adb:
 
+**IMPORTANT:** Always prefer deep links over `adb shell input tap` for navigation and actions. Deep links are reliable and don't require coordinate calculations or UI state checks. Only use tap interactions when specifically testing touch behavior.
+
 ```bash
 # Navigation deep links (navigate to screens)
 adb shell am start -a android.intent.action.VIEW -d "shaker://run" com.shakercontrol.app.debug
@@ -157,6 +159,11 @@ adb shell am start -a android.intent.action.VIEW -d "shaker://diagnostics" com.s
 adb shell am start -a android.intent.action.VIEW -d "shaker://alarms" com.shakercontrol.app.debug
 adb shell am start -a android.intent.action.VIEW -d "shaker://io" com.shakercontrol.app.debug
 adb shell am start -a android.intent.action.VIEW -d "shaker://pid/1" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://pid/2" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://pid/3" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://registers/1" com.shakercontrol.app.debug  # Register editor for PID 1
+adb shell am start -a android.intent.action.VIEW -d "shaker://registers/2" com.shakercontrol.app.debug  # Register editor for PID 2
+adb shell am start -a android.intent.action.VIEW -d "shaker://registers/3" com.shakercontrol.app.debug  # Register editor for PID 3
 
 # Action deep links (trigger behavior)
 adb shell am start -a android.intent.action.VIEW -d "shaker://action/reconnect" com.shakercontrol.app.debug
@@ -165,6 +172,28 @@ adb shell am start -a android.intent.action.VIEW -d "shaker://action/disconnect"
 adb shell am start -a android.intent.action.VIEW -d "shaker://action/service-mode/enable" com.shakercontrol.app.debug
 adb shell am start -a android.intent.action.VIEW -d "shaker://action/service-mode/disable" com.shakercontrol.app.debug
 adb shell am start -a android.intent.action.VIEW -d "shaker://action/service-mode/toggle" com.shakercontrol.app.debug
+
+# Test deep links (for automated testing - v0.4.0+)
+# Relay control (channel 1-8, state 0=OFF/1=ON)
+adb shell am start -a android.intent.action.VIEW -d "shaker://test/relay/7/1" com.shakercontrol.app.debug  # Light ON
+adb shell am start -a android.intent.action.VIEW -d "shaker://test/relay/7/0" com.shakercontrol.app.debug  # Light OFF
+adb shell am start -a android.intent.action.VIEW -d "shaker://test/relay/6/1" com.shakercontrol.app.debug  # Door lock ON
+adb shell am start -a android.intent.action.VIEW -d "shaker://test/relay/6/0" com.shakercontrol.app.debug  # Door lock OFF
+
+# Convenience toggles
+adb shell am start -a android.intent.action.VIEW -d "shaker://test/light" com.shakercontrol.app.debug     # Toggle chamber light (CH7)
+adb shell am start -a android.intent.action.VIEW -d "shaker://test/door" com.shakercontrol.app.debug      # Toggle door lock (CH6)
+adb shell am start -a android.intent.action.VIEW -d "shaker://test/chilldown" com.shakercontrol.app.debug # Start chilldown (LN2 AUTO)
+
+# Capability control (subsystem 0-6, level 0=NOT_PRESENT/1=OPTIONAL/2=REQUIRED)
+# Subsystems: 0=PID1, 1=PID2, 2=PID3, 3=E-Stop(immutable), 4=Door, 5=LN2, 6=Motor
+adb shell am start -a android.intent.action.VIEW -d "shaker://test/capability/0/1" com.shakercontrol.app.debug  # PID1=OPTIONAL
+adb shell am start -a android.intent.action.VIEW -d "shaker://test/capability/0/2" com.shakercontrol.app.debug  # PID1=REQUIRED
+
+# Safety gate control (gate 0-8, enabled 0=bypassed/1=enabled)
+# Gates: 0=E-Stop(cannot bypass), 1=Door, 2=HMI, 3-5=PID Online, 6-8=PID No Probe Error
+adb shell am start -a android.intent.action.VIEW -d "shaker://test/gate/1/0" com.shakercontrol.app.debug  # Bypass door gate
+adb shell am start -a android.intent.action.VIEW -d "shaker://test/gate/1/1" com.shakercontrol.app.debug  # Enable door gate
 ```
 
 **Important:** On first app boot, always use `shaker://action/reconnect` first to connect to the controller, then navigate to screens. Navigation deep links only work reliably on cold start; when app is already running, they deliver intent but may not navigate.
@@ -211,7 +240,9 @@ The Settings screen now includes a Device section with:
 
 ## Related Repositories
 - Firmware: `/tmp/NuNuCryoShaker` (ESP32-S3 BLE GATT server)
-- Handoff doc: `docs/FIRMWARE_AGENT_PROMPT.md`
+- Handoff docs:
+  - `docs/FIRMWARE_AGENT_PROMPT.md` - General firmware tasks (SET_RELAY, etc.)
+  - `docs/FIRMWARE_HANDOFF_TELEMETRY.md` - Telemetry extension + lazy polling fix
 
 ## Key Documentation
 - `docs/AGENT_LOG.md` - Development history and decisions
@@ -238,7 +269,7 @@ The Settings screen now includes a Device section with:
 - 101 unit tests passing
 - I/O Control screen implemented with DI/RO visualization
 - RS-485 PID controller integration prepared (awaiting firmware)
-- Firmware v0.2.0+26011901 verified on device
+- Firmware v0.3.3+26012004 verified on device (lazy polling support)
 
 ### Stage 8 Progress (In Progress)
 **Completed:**
@@ -258,6 +289,13 @@ The Settings screen now includes a Device section with:
 - **PID error handling**: Probe error detection (HHHH/LLLL), pulsing red border for errors, status badges
 - **Capability override editing**: Service mode allows editing capability levels with OVERRIDE badge
 - **Threshold tuning**: Stale threshold 1500ms (was 500ms), probe error threshold 500°C (was 3000°C)
+- **Register Editor**: Direct Modbus register read/write for PID controllers (service mode)
+- **Lazy Polling**: Complete app→MCU integration (SET_IDLE_TIMEOUT 0x0040, GET_IDLE_TIMEOUT 0x0041), UI in Settings + Diagnostics
+- **Lazy Polling Diagnostics**: RS-485 Polling card shows FAST/SLOW status, polling mode, configured timeout
+- **Alarm History Tracking**: App tracks alarm bit transitions for debugging transient alarms
+- **Heat/Cool Buttons**: Service mode PID control - toggles heater PIDs (2&3) and LN2 cooling (PID 1) between AUTO/STOP
+- **Duration/Cycle Picker Dialogs**: Replaced text field inputs with spinner-based picker dialogs for better UX
+- **Recipe Header Layout**: Mill/Hold totals moved to header row alongside estimated total time
 
 **Remaining:**
 1. Recipe persistence (save/load recipes)
@@ -267,6 +305,15 @@ The Settings screen now includes a Device section with:
 ### Known Issues
 - Connect popup on first start doesn't initiate connect sequence (must use Devices screen)
 - Relay commands show "NO ARGS" error (firmware needs SET_RELAY handler - see FIRMWARE_AGENT_PROMPT.md)
+
+### Lazy Polling Status (Firmware v0.3.10)
+- **v0.3.7**: KEEPALIVE no longer resets idle timer (lazy mode activates while connected)
+- **v0.3.8**: Telemetry includes `lazy_poll_active` and `idle_timeout_min` fields
+- **v0.3.9**: Added reserved byte to complete 16-byte run state
+- **v0.3.10**: Adjusted stale/offline thresholds for lazy mode stability
+- **Commands**: App tries 0x0060/0x0061 first, falls back to legacy 0x0040/0x0041
+- **NVS**: Settings persist across MCU reboots
+- App queries MCU on connect to sync state (MCU is source of truth)
 
 ### RS-485 Integration Status
 The app is now receiving real RS-485 PID controller data from firmware:
@@ -278,6 +325,12 @@ The app is now receiving real RS-485 PID controller data from firmware:
 - **Start gating**: Correctly blocks start when Required controllers are offline
 
 Currently testing with all 3 PID controllers connected via RS-485. PID 1 (LN2) has disconnected probe showing HHHH error.
+
+### LC108 Controller Configuration
+**State Persistence (pass-0303 menu)**: Controllers configured to remember their last mode (STOP/AUTO/MANUAL) on power cycle. This means:
+- When a program ends with controllers in STOP mode, they remain in STOP after reboot
+- No need to explicitly stop controllers on every boot
+- The app's Heat/Cool buttons toggle between AUTO and STOP, and the state persists
 
 ### Implementation Checklist Progress
 From `docs/MCU_docs/95-implementation-checklist.md`:

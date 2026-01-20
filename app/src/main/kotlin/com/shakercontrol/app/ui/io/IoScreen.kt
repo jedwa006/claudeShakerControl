@@ -27,6 +27,37 @@ import com.shakercontrol.app.ui.theme.StatusNormal
 import com.shakercontrol.app.ui.theme.StatusWarning
 import kotlinx.coroutines.flow.collectLatest
 
+/**
+ * I/O channel labels mapped from hardware assignments.
+ * See docs/MCU_docs/70-io-logical-map.md for full mapping.
+ */
+private object IoLabels {
+    val digitalInputs = mapOf(
+        1 to Pair("E-Stop", "Emergency Stop"),
+        2 to Pair("Door", "Door Closed"),
+        3 to Pair("LN2", "LN2 Present"),
+        4 to Pair("VFD", "Motor Fault"),
+        5 to Pair("DI5", "Reserved"),
+        6 to Pair("DI6", "Reserved"),
+        7 to Pair("DI7", "Reserved"),
+        8 to Pair("DI8", "Reserved")
+    )
+
+    val relayOutputs = mapOf(
+        1 to Pair("Motor", "Main Contactor"),
+        2 to Pair("HTR1", "Heater 1 (Axle)"),
+        3 to Pair("HTR2", "Heater 2 (Orbital)"),
+        4 to Pair("LN2", "LN2 Valve"),
+        5 to Pair("Lock", "Door Lock"),
+        6 to Pair("Light", "Chamber Light"),
+        7 to Pair("RO7", "Reserved"),
+        8 to Pair("RO8", "Reserved")
+    )
+
+    fun diLabel(channel: Int): String = digitalInputs[channel]?.first ?: "DI$channel"
+    fun roLabel(channel: Int): String = relayOutputs[channel]?.first ?: "RO$channel"
+}
+
 @Composable
 fun IoScreen(
     onNavigateBack: () -> Unit,
@@ -222,12 +253,15 @@ private fun DigitalInputIndicator(
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.width(80.dp)
     ) {
         Text(
-            text = "DI$channel",
+            text = IoLabels.diLabel(channel),
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            maxLines = 1
         )
 
         if (isSimulating) {
@@ -374,13 +408,16 @@ private fun RelayOutputControl(
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.width(80.dp)
     ) {
         // Channel label
         Text(
-            text = "RO$channel",
+            text = IoLabels.roLabel(channel),
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            maxLines = 1
         )
 
         // Status indicator LED - shows current state with pulse when ON

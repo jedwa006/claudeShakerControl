@@ -4,7 +4,6 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
@@ -43,7 +42,16 @@ fun RecipeSection(
     isRunning: Boolean,
     interlockStatus: InterlockStatus,
     isServiceMode: Boolean,
+    isConnected: Boolean = false,
+    isLightOn: Boolean = false,
+    isDoorLocked: Boolean = false,
+    areHeatersEnabled: Boolean = false,
+    isCoolingEnabled: Boolean = false,
     onRecipeChange: (Recipe) -> Unit,
+    onToggleLight: () -> Unit = {},
+    onToggleDoor: () -> Unit = {},
+    onToggleHeaters: () -> Unit = {},
+    onToggleCooling: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(modifier = modifier) {
@@ -64,9 +72,20 @@ fun RecipeSection(
                 Spacer(modifier = Modifier.height(8.dp))
                 RunProgressDisplay(runProgress = runProgress)
             } else {
-                // Idle: Show controls (Lights, Door, + Heat/Motor in service mode)
+                // Idle: Show controls (Lights, Door, + Heat/Cool in service mode)
                 Spacer(modifier = Modifier.height(8.dp))
-                ControlsRow(isServiceMode = isServiceMode)
+                ControlsRow(
+                    isServiceMode = isServiceMode,
+                    isLightOn = isLightOn,
+                    isDoorLocked = isDoorLocked,
+                    isConnected = isConnected,
+                    areHeatersEnabled = areHeatersEnabled,
+                    isCoolingEnabled = isCoolingEnabled,
+                    onToggleLight = onToggleLight,
+                    onToggleDoor = onToggleDoor,
+                    onToggleHeaters = onToggleHeaters,
+                    onToggleCooling = onToggleCooling
+                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -91,7 +110,7 @@ private fun RecipeConfigSection(
     isRunning: Boolean,
     onRecipeChange: (Recipe) -> Unit
 ) {
-    // Header row with title and estimated total
+    // Header row with title, Mill/Hold totals, and estimated total
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -102,28 +121,47 @@ private fun RecipeConfigSection(
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold
         )
-        // Prominent total time display
-        Surface(
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-            shape = MaterialTheme.shapes.small
+
+        // Mill/Hold totals and estimated total grouped together
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // Mill total
+            Text(
+                text = "Mill: ${formatDurationLong(recipe.totalMillingTime)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            // Hold total
+            Text(
+                text = "Hold: ${formatDurationLong(recipe.totalHoldingTime)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            // Prominent total time display
+            Surface(
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                shape = MaterialTheme.shapes.small
             ) {
-                Icon(
-                    imageVector = Icons.Default.Schedule,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                Text(
-                    text = formatDurationLong(recipe.totalRuntime),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Schedule,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Text(
+                        text = formatDurationLong(recipe.totalRuntime),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
             }
         }
     }
@@ -157,24 +195,6 @@ private fun RecipeConfigSection(
         )
     }
 
-    Spacer(modifier = Modifier.height(6.dp))
-
-    // Derived totals - inline with muted styling
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Text(
-            text = "Mill: ${formatDurationLong(recipe.totalMillingTime)}",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = "Hold: ${formatDurationLong(recipe.totalHoldingTime)}",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
 }
 
 /**
@@ -190,10 +210,22 @@ private fun SectionDivider() {
 /**
  * Controls row with Lights, Door, and service-mode controls.
  * These are locked/hidden when a run is in progress.
+ *
+ * Light relay: CH7 (chamber lighting)
+ * Door lock relay: CH6 (solenoid locking bar)
  */
 @Composable
 private fun ControlsRow(
-    isServiceMode: Boolean
+    isServiceMode: Boolean,
+    isLightOn: Boolean = false,
+    isDoorLocked: Boolean = false,
+    isConnected: Boolean = false,
+    areHeatersEnabled: Boolean = false,
+    isCoolingEnabled: Boolean = false,
+    onToggleLight: () -> Unit = {},
+    onToggleDoor: () -> Unit = {},
+    onToggleHeaters: () -> Unit = {},
+    onToggleCooling: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -211,14 +243,20 @@ private fun ControlsRow(
 
         ReadinessToggleButton(
             label = "Lights",
-            icon = Icons.Default.Lightbulb
+            icon = Icons.Default.Lightbulb,
+            isOn = isLightOn,
+            onToggle = onToggleLight,
+            enabled = isConnected
         )
         ReadinessToggleButton(
             label = "Door",
-            icon = Icons.Default.Lock
+            icon = if (isDoorLocked) Icons.Default.Lock else Icons.Default.LockOpen,
+            isOn = isDoorLocked,
+            onToggle = onToggleDoor,
+            enabled = isConnected
         )
 
-        // Service mode controls
+        // Service mode controls - Heat and Cool buttons for PID control
         if (isServiceMode) {
             Spacer(modifier = Modifier.weight(1f))
             Surface(
@@ -233,15 +271,21 @@ private fun ControlsRow(
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
-            ReadinessToggleButton(
+            // Heat button - controls PID 2 & 3 (heater bearings)
+            PidControlToggleButton(
                 label = "Heat",
                 icon = Icons.Default.Whatshot,
-                warningColor = true
+                isEnabled = areHeatersEnabled,
+                warningColor = true,
+                onClick = onToggleHeaters
             )
-            ReadinessToggleButton(
-                label = "Motor",
-                icon = Icons.Default.Settings,
-                warningColor = true
+            // Cool button - controls PID 1 (LN2)
+            PidControlToggleButton(
+                label = "Cool",
+                icon = Icons.Default.AcUnit,
+                isEnabled = isCoolingEnabled,
+                warningColor = true,
+                onClick = onToggleCooling
             )
         }
     }
@@ -331,32 +375,39 @@ private fun ReadinessIndicator(
 }
 
 /**
- * Compact toggle button for readiness panel.
- * @param compact If true, shows icon only (for space-constrained service mode controls)
+ * Toggle button for relay controls (Lights, Door).
+ * @param isOn Current state of the relay
+ * @param onToggle Callback when button is clicked
+ * @param enabled Whether the button is enabled (e.g., when connected)
+ * @param compact If true, shows icon only (for space-constrained layouts)
  */
 @Composable
 private fun ReadinessToggleButton(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isOn: Boolean,
+    onToggle: () -> Unit,
+    enabled: Boolean = true,
     warningColor: Boolean = false,
     compact: Boolean = false
 ) {
-    var isOn by remember { mutableStateOf(false) }
-
     val backgroundColor = when {
+        !enabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         isOn && warningColor -> SemanticColors.Warning.copy(alpha = 0.3f)
         isOn -> SemanticColors.Normal.copy(alpha = 0.3f)
         else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     }
 
     val contentColor = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
         isOn && warningColor -> SemanticColors.Warning
         isOn -> SemanticColors.Normal
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
     Surface(
-        onClick = { isOn = !isOn },
+        onClick = onToggle,
+        enabled = enabled,
         color = backgroundColor,
         shape = MaterialTheme.shapes.small
     ) {
@@ -386,6 +437,72 @@ private fun ReadinessToggleButton(
     }
 }
 
+/**
+ * PID control toggle button for service mode Heat/Cool controls.
+ * Shows actual PID state with pulsing animation when enabled.
+ */
+@Composable
+private fun PidControlToggleButton(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isEnabled: Boolean,
+    warningColor: Boolean = true,
+    onClick: () -> Unit
+) {
+    // Pulsing animation when enabled
+    val infiniteTransition = rememberInfiniteTransition(label = "${label}_pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = if (isEnabled) 0.5f else 0.3f,
+        targetValue = if (isEnabled) 0.8f else 0.3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "${label}_alpha"
+    )
+
+    val backgroundColor = when {
+        isEnabled && warningColor -> SemanticColors.Warning.copy(alpha = pulseAlpha)
+        isEnabled -> SemanticColors.Normal.copy(alpha = pulseAlpha)
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    }
+
+    val contentColor = when {
+        isEnabled && warningColor -> SemanticColors.Warning
+        isEnabled -> SemanticColors.Normal
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Surface(
+        onClick = onClick,
+        color = backgroundColor,
+        shape = MaterialTheme.shapes.small
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                modifier = Modifier.size(16.dp),
+                tint = contentColor
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = contentColor,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+/**
+ * Duration input that shows a picker dialog when tapped.
+ * Much better UX than trying to type mm:ss format.
+ */
 @Composable
 private fun DurationInput(
     label: String,
@@ -394,25 +511,151 @@ private fun DurationInput(
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    var text by remember(duration) {
-        mutableStateOf(formatDuration(duration))
+    var showPicker by remember { mutableStateOf(false) }
+
+    if (showPicker) {
+        DurationPickerDialog(
+            title = label,
+            initialDuration = duration,
+            onDismiss = { showPicker = false },
+            onConfirm = { newDuration ->
+                onDurationChange(newDuration)
+                showPicker = false
+            }
+        )
     }
 
-    OutlinedTextField(
-        value = text,
-        onValueChange = { newText ->
-            text = newText
-            parseDuration(newText)?.let { onDurationChange(it) }
+    // Clickable display that opens the picker
+    OutlinedCard(
+        onClick = { if (enabled) showPicker = true },
+        modifier = modifier,
+        enabled = enabled
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            )
+            Text(
+                text = formatDuration(duration),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            )
+        }
+    }
+}
+
+/**
+ * Dialog with minute and second spinners for duration input.
+ */
+@Composable
+private fun DurationPickerDialog(
+    title: String,
+    initialDuration: Duration,
+    onDismiss: () -> Unit,
+    onConfirm: (Duration) -> Unit
+) {
+    val totalSeconds = initialDuration.inWholeSeconds.toInt()
+    var minutes by remember { mutableStateOf(totalSeconds / 60) }
+    var seconds by remember { mutableStateOf(totalSeconds % 60) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Minutes spinner
+                NumberSpinner(
+                    value = minutes,
+                    onValueChange = { minutes = it },
+                    range = 0..99,
+                    label = "min"
+                )
+
+                Text(
+                    text = ":",
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                )
+
+                // Seconds spinner
+                NumberSpinner(
+                    value = seconds,
+                    onValueChange = { seconds = it },
+                    range = 0..59,
+                    label = "sec"
+                )
+            }
         },
-        label = { Text(label) },
-        placeholder = { Text("mm:ss") },
-        enabled = enabled,
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = modifier
+        confirmButton = {
+            Button(onClick = {
+                onConfirm((minutes.minutes + seconds.seconds))
+            }) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
     )
 }
 
+/**
+ * Simple number spinner with +/- buttons.
+ */
+@Composable
+private fun NumberSpinner(
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    range: IntRange,
+    label: String
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Increment button
+        IconButton(
+            onClick = { if (value < range.last) onValueChange(value + 1) }
+        ) {
+            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Increase")
+        }
+
+        // Value display
+        Text(
+            text = String.format("%02d", value),
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold
+        )
+
+        // Label
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        // Decrement button
+        IconButton(
+            onClick = { if (value > range.first) onValueChange(value - 1) }
+        ) {
+            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Decrease")
+        }
+    }
+}
+
+/**
+ * Cycle count input with picker dialog.
+ */
 @Composable
 private fun CycleInput(
     cycles: Int,
@@ -420,22 +663,81 @@ private fun CycleInput(
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    var text by remember(cycles) {
-        mutableStateOf(cycles.toString())
+    var showPicker by remember { mutableStateOf(false) }
+
+    if (showPicker) {
+        CyclePickerDialog(
+            initialCycles = cycles,
+            onDismiss = { showPicker = false },
+            onConfirm = { newCycles ->
+                onCyclesChange(newCycles)
+                showPicker = false
+            }
+        )
     }
 
-    OutlinedTextField(
-        value = text,
-        onValueChange = { newText ->
-            text = newText
-            newText.toIntOrNull()?.takeIf { it >= 1 }?.let { onCyclesChange(it) }
+    // Clickable display that opens the picker
+    OutlinedCard(
+        onClick = { if (enabled) showPicker = true },
+        modifier = modifier,
+        enabled = enabled
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            Text(
+                text = "Cycles",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            )
+            Text(
+                text = cycles.toString(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            )
+        }
+    }
+}
+
+/**
+ * Dialog for selecting cycle count.
+ */
+@Composable
+private fun CyclePickerDialog(
+    initialCycles: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    var cycles by remember { mutableStateOf(initialCycles) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Cycles") },
+        text = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                NumberSpinner(
+                    value = cycles,
+                    onValueChange = { cycles = it },
+                    range = 1..99,
+                    label = "cycles"
+                )
+            }
         },
-        label = { Text("Cycles") },
-        placeholder = { Text("1") },
-        enabled = enabled,
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = modifier
+        confirmButton = {
+            Button(onClick = { onConfirm(cycles) }) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
     )
 }
 
@@ -496,8 +798,15 @@ private fun RunProgressDisplay(runProgress: RunProgress) {
 }
 
 /**
- * Big control buttons section.
+ * Big control buttons section with Chilldown and Start controls.
  * Spec: docs/dashboard-sec-v1.md section 5.1 B and docs/ui-copy-labels-v1.md section 3.3
+ *
+ * Layout when not running:
+ * ┌──────────────────────────────────────┐
+ * │  [Chilldown] [✓ Start after chill]   │
+ * ├──────────────────────────────────────┤
+ * │            [  START  ]               │
+ * └──────────────────────────────────────┘
  */
 @Composable
 fun ControlsSection(
@@ -505,10 +814,15 @@ fun ControlsSection(
     connectionState: ConnectionState,
     isExecutingCommand: Boolean = false,
     startGating: StartGatingResult = StartGatingResult.OK,
+    isChilldownActive: Boolean = false,
+    isStartAfterChillEnabled: Boolean = false,
+    canChilldown: Boolean = false,
     onStart: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
+    onChilldown: () -> Unit = {},
+    onToggleStartAfterChill: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Use startGating for Start button, other buttons use simple state checks
@@ -543,6 +857,18 @@ fun ControlsSection(
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
+
+            // Chilldown row (only shown when not running)
+            if (!machineState.isOperating) {
+                ChilldownRow(
+                    isChilldownActive = isChilldownActive,
+                    isStartAfterChillEnabled = isStartAfterChillEnabled,
+                    canChilldown = canChilldown && !isExecutingCommand,
+                    onChilldown = onChilldown,
+                    onToggleStartAfterChill = onToggleStartAfterChill
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -642,6 +968,102 @@ fun ControlsSection(
 }
 
 /**
+ * Chilldown row with button and "Start after chill" checkbox.
+ * Used to pre-cool the chamber with LN2 before starting a run.
+ */
+@Composable
+private fun ChilldownRow(
+    isChilldownActive: Boolean,
+    isStartAfterChillEnabled: Boolean,
+    canChilldown: Boolean,
+    onChilldown: () -> Unit,
+    onToggleStartAfterChill: (Boolean) -> Unit
+) {
+    // Pulsing animation when chilldown is active
+    val infiniteTransition = rememberInfiniteTransition(label = "chilldown_pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = if (isChilldownActive) 0.5f else 1f,
+        targetValue = if (isChilldownActive) 1f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "chilldown_alpha"
+    )
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Chilldown button
+        OutlinedButton(
+            onClick = onChilldown,
+            enabled = canChilldown && !isChilldownActive,
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = if (isChilldownActive) {
+                    SemanticColors.Active.copy(alpha = pulseAlpha * 0.2f)
+                } else {
+                    Color.Transparent
+                }
+            ),
+            modifier = Modifier.height(40.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.AcUnit,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = if (isChilldownActive) SemanticColors.Active else LocalContentColor.current
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = if (isChilldownActive) "Chilling..." else "Chilldown",
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+
+        // Start after chill checkbox
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.clickable { onToggleStartAfterChill(!isStartAfterChillEnabled) }
+        ) {
+            Checkbox(
+                checked = isStartAfterChillEnabled,
+                onCheckedChange = onToggleStartAfterChill,
+                enabled = !isChilldownActive
+            )
+            Text(
+                text = "Start after chill",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isChilldownActive) {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
+            )
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Status badge when chilling
+        if (isChilldownActive) {
+            Surface(
+                color = SemanticColors.Active.copy(alpha = 0.2f),
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(
+                    text = "Pre-cooling",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SemanticColors.Active,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
  * Compact PID tiles section with responsive grid layout.
  * Shows 1/2/3 columns based on controller count for optimal space usage.
  * Dynamically shows only controllers that are connected via RS-485.
@@ -650,6 +1072,7 @@ fun ControlsSection(
 fun TemperaturesSection(
     pidData: List<PidData>,
     onNavigateToPid: (Int) -> Unit,
+    onWakeFromLazy: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Filter to only show controllers that have capability level > NOT_PRESENT
@@ -695,6 +1118,7 @@ fun TemperaturesSection(
                     CompactPidTile(
                         pid = pid,
                         onClick = { onNavigateToPid(pid.controllerId) },
+                        onWakeFromLazy = onWakeFromLazy,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -706,50 +1130,81 @@ fun TemperaturesSection(
 /**
  * Compact stamp-style PID tile for grid layout.
  * Shows essential info: name, PV/SV, and compact status indicators.
+ *
+ * Visual states:
+ * - Error (offline/probe error): Red pulsing border
+ * - Warning (stale): Yellow static border
+ * - Lazy mode: Yellow breathing border (slower pulse)
+ * - Normal: No border
  */
 @Composable
 private fun CompactPidTile(
     pid: PidData,
     onClick: () -> Unit,
+    onWakeFromLazy: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     // Pulsing border for error states
     val hasError = pid.isOffline || pid.hasProbeError
     val hasWarning = pid.isStale && !hasError
+    val isLazyMode = pid.lazyPollActive && !hasError && !hasWarning
 
     val infiniteTransition = rememberInfiniteTransition(label = "error_pulse")
-    val borderAlpha by infiniteTransition.animateFloat(
-        initialValue = if (hasError) 1f else 0.5f,
-        targetValue = if (hasError) 0.3f else 0.5f,
+
+    // Red pulsing for errors (fast pulse)
+    val errorBorderAlpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.3f,
         animationSpec = infiniteRepeatable(
             animation = tween(800, easing = EaseInOut),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "border_alpha"
+        label = "error_border_alpha"
+    )
+
+    // Yellow breathing for lazy mode (slower, gentler pulse)
+    val lazyBorderAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.7f,
+        targetValue = 0.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "lazy_border_alpha"
     )
 
     val borderColor = when {
-        hasError -> SemanticColors.Alarm.copy(alpha = borderAlpha)
+        hasError -> SemanticColors.Alarm.copy(alpha = errorBorderAlpha)
         hasWarning -> SemanticColors.Warning.copy(alpha = 0.7f)
+        isLazyMode -> SemanticColors.Warning.copy(alpha = lazyBorderAlpha)
         else -> Color.Transparent
     }
 
-    val borderWidth = if (hasError || hasWarning) 2.dp else 0.dp
+    val borderWidth = if (hasError || hasWarning || isLazyMode) 2.dp else 0.dp
+
+    // Tap behavior: navigate to PID detail, but also wake from lazy mode
+    val handleClick = {
+        if (isLazyMode) {
+            onWakeFromLazy()
+        }
+        onClick()
+    }
 
     Card(
         modifier = modifier
             .then(
-                if (hasError || hasWarning) {
+                if (hasError || hasWarning || isLazyMode) {
                     Modifier.border(borderWidth, borderColor, MaterialTheme.shapes.medium)
                 } else {
                     Modifier
                 }
             )
-            .clickable(onClick = onClick),
+            .clickable(onClick = handleClick),
         colors = CardDefaults.cardColors(
             containerColor = when {
                 hasError -> SemanticColors.Alarm.copy(alpha = 0.1f)
                 hasWarning -> SemanticColors.Warning.copy(alpha = 0.1f)
+                isLazyMode -> SemanticColors.Warning.copy(alpha = 0.05f)
                 else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
             }
         )

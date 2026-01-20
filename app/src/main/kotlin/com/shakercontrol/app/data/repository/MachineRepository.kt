@@ -30,9 +30,20 @@ interface MachineRepository {
     val runProgress: StateFlow<RunProgress?>
 
     /**
-     * Current alarms.
+     * Current alarms (real-time from telemetry alarm_bits).
      */
     val alarms: StateFlow<List<Alarm>>
+
+    /**
+     * Alarm history - records all alarm transitions (set/clear).
+     * Used to track transient alarms that may clear before user notices.
+     */
+    val alarmHistory: StateFlow<List<AlarmHistoryEntry>>
+
+    /**
+     * Unacknowledged alarm bits - alarms that occurred but user hasn't dismissed.
+     */
+    val unacknowledgedAlarmBits: StateFlow<Int>
 
     /**
      * I/O status (digital inputs and relay outputs).
@@ -67,10 +78,28 @@ interface MachineRepository {
     // PID control commands
     suspend fun setSetpoint(controllerId: Int, setpoint: Float): Result<Unit>
     suspend fun setMode(controllerId: Int, mode: PidMode): Result<Unit>
+    suspend fun requestPvSvRefresh(controllerId: Int): Result<Unit>
+    suspend fun setPidParams(controllerId: Int, pGain: Float, iTime: Int, dTime: Int): Result<Unit>
+    suspend fun readPidParams(controllerId: Int): Result<PidParams>
+    suspend fun startAutotune(controllerId: Int): Result<Unit>
+    suspend fun stopAutotune(controllerId: Int): Result<Unit>
+    suspend fun setAlarmLimits(controllerId: Int, alarm1: Float, alarm2: Float): Result<Unit>
+    suspend fun readAlarmLimits(controllerId: Int): Result<AlarmLimits>
 
     // Alarm commands
     suspend fun acknowledgeAlarm(alarmId: String): Result<Unit>
     suspend fun clearLatchedAlarms(): Result<Unit>
+
+    /**
+     * Acknowledge unacknowledged alarm bits (dismiss from unacknowledged list).
+     * @param bits Bitmask of alarm bits to acknowledge
+     */
+    suspend fun acknowledgeAlarmBits(bits: Int)
+
+    /**
+     * Clear all alarm history entries.
+     */
+    suspend fun clearAlarmHistory()
 
     // I/O commands
     suspend fun setRelay(channel: Int, on: Boolean): Result<Unit>
@@ -93,4 +122,75 @@ interface MachineRepository {
     val capabilityOverrides: StateFlow<SubsystemCapabilities?>
     suspend fun setCapabilityOverride(subsystem: String, level: CapabilityLevel)
     suspend fun clearCapabilityOverrides()
+
+    // Generic Modbus register access (for register editor)
+    /**
+     * Read one or more consecutive registers from a PID controller.
+     * @param controllerId Controller address (1-3)
+     * @param startAddress Starting register address
+     * @param count Number of registers to read (1-16)
+     * @return List of register values (as raw u16)
+     */
+    suspend fun readRegisters(controllerId: Int, startAddress: Int, count: Int): Result<List<Int>>
+
+    /**
+     * Write a single register to a PID controller.
+     * @param controllerId Controller address (1-3)
+     * @param address Register address
+     * @param value Value to write (as raw u16)
+     */
+    suspend fun writeRegister(controllerId: Int, address: Int, value: Int): Result<Unit>
+
+    // Lazy polling configuration
+    /**
+     * MCU's current idle timeout setting.
+     * Synced from MCU on connection. null if not yet synced or disconnected.
+     * UI should observe this to display the actual MCU value.
+     */
+    val mcuIdleTimeoutMinutes: StateFlow<Int?>
+
+    /**
+     * Set the idle timeout for lazy polling on the MCU.
+     * @param minutes Timeout in minutes (0=disabled, 1-255=enabled)
+     * When idle for this duration, the MCU reduces RS-485 polling rate.
+     */
+    suspend fun setIdleTimeout(minutes: Int): Result<Unit>
+
+    /**
+     * Get the current idle timeout setting from the MCU.
+     * @return Current timeout in minutes (0=disabled)
+     */
+    suspend fun getIdleTimeout(): Result<Int>
+
+    // ==========================================
+    // Safety Gate Commands (v0.4.0+)
+    // ==========================================
+
+    /**
+     * Get capability levels for all subsystems from the MCU.
+     * @return Map of subsystem ID to capability level (0=NOT_PRESENT, 1=OPTIONAL, 2=REQUIRED)
+     */
+    suspend fun getCapabilities(): Result<Map<Int, Int>>
+
+    /**
+     * Set capability level for a subsystem.
+     * @param subsystemId Subsystem ID (see SubsystemId constants)
+     * @param level Capability level (see CapabilityLevelCode constants)
+     * Note: E-Stop (ID 3) capability cannot be changed (always REQUIRED).
+     */
+    suspend fun setCapability(subsystemId: Int, level: Int): Result<Unit>
+
+    /**
+     * Get current safety gate states from the MCU.
+     * @return Pair of (enableMask, statusMask) - which gates are enabled and which are satisfied
+     */
+    suspend fun getSafetyGates(): Result<Pair<Int, Int>>
+
+    /**
+     * Enable or bypass a safety gate.
+     * @param gateId Gate ID (see SafetyGateId constants)
+     * @param enabled true=gate active (must be satisfied to start), false=bypassed
+     * Note: E-Stop gate (ID 0) cannot be bypassed.
+     */
+    suspend fun setSafetyGate(gateId: Int, enabled: Boolean): Result<Unit>
 }
