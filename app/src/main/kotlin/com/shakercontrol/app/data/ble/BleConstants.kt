@@ -174,12 +174,17 @@ enum class RelayState(val code: Byte) {
 
 /**
  * Controller modes for SET_MODE command.
+ * Values per LC108/FT200 register 000Dh (AM.RS ControlMode):
+ *   0 = PID (automatic control)
+ *   1 = MANUAL (manual output)
+ *   2 = STOP (output disabled)
+ *   5 = END (program end)
  */
 enum class ControllerMode(val code: Byte) {
-    STOP(0),
-    MANUAL(1),
-    AUTO(2),
-    PROGRAM(3);
+    AUTO(0),      // LC108: 0 = PID (automatic control)
+    MANUAL(1),    // LC108: 1 = Manual output
+    STOP(2),      // LC108: 2 = Stop (output disabled)
+    PROGRAM(5);   // LC108: 5 = END (program end)
 
     companion object {
         fun fromCode(code: Byte): ControllerMode =
