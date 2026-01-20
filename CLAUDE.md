@@ -245,7 +245,7 @@ The Settings screen now includes a Device section with:
 - 101 unit tests passing
 - I/O Control screen implemented with DI/RO visualization
 - RS-485 PID controller integration prepared (awaiting firmware)
-- Firmware v0.2.0+26011901 verified on device
+- Firmware v0.3.3+26012004 verified on device (lazy polling support)
 
 ### Stage 8 Progress (In Progress)
 **Completed:**
@@ -266,7 +266,7 @@ The Settings screen now includes a Device section with:
 - **Capability override editing**: Service mode allows editing capability levels with OVERRIDE badge
 - **Threshold tuning**: Stale threshold 1500ms (was 500ms), probe error threshold 500°C (was 3000°C)
 - **Register Editor**: Direct Modbus register read/write for PID controllers (service mode)
-- **Lazy Polling Settings**: UI in Settings screen for idle timeout configuration (firmware TODO)
+- **Lazy Polling**: Complete app→MCU integration (SET_IDLE_TIMEOUT 0x0040, GET_IDLE_TIMEOUT 0x0041)
 - **Heat/Cool Buttons**: Service mode PID control - toggles heater PIDs (2&3) and LN2 cooling (PID 1) between AUTO/STOP
 - **Duration/Cycle Picker Dialogs**: Replaced text field inputs with spinner-based picker dialogs for better UX
 - **Recipe Header Layout**: Mill/Hold totals moved to header row alongside estimated total time
@@ -275,7 +275,6 @@ The Settings screen now includes a Device section with:
 1. Recipe persistence (save/load recipes)
 2. Recipe transfer to MCU (if applicable)
 3. QR code recipe import (future feature)
-4. Lazy polling firmware command integration
 
 ### Known Issues
 - Connect popup on first start doesn't initiate connect sequence (must use Devices screen)
@@ -291,6 +290,12 @@ The app is now receiving real RS-485 PID controller data from firmware:
 - **Start gating**: Correctly blocks start when Required controllers are offline
 
 Currently testing with all 3 PID controllers connected via RS-485. PID 1 (LN2) has disconnected probe showing HHHH error.
+
+### LC108 Controller Configuration
+**State Persistence (pass-0303 menu)**: Controllers configured to remember their last mode (STOP/AUTO/MANUAL) on power cycle. This means:
+- When a program ends with controllers in STOP mode, they remain in STOP after reboot
+- No need to explicitly stop controllers on every boot
+- The app's Heat/Cool buttons toggle between AUTO and STOP, and the state persists
 
 ### Implementation Checklist Progress
 From `docs/MCU_docs/95-implementation-checklist.md`:

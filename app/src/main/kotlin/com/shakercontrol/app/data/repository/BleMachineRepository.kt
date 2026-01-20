@@ -1187,4 +1187,46 @@ class BleMachineRepository @Inject constructor(
             Result.failure(RuntimeException(detail))
         }
     }
+
+    // ==================== Lazy Polling Configuration ====================
+
+    override suspend fun setIdleTimeout(minutes: Int): Result<Unit> {
+        require(minutes in 0..255) { "Timeout must be 0-255 minutes" }
+
+        val payload = byteArrayOf(minutes.toByte())
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.SET_IDLE_TIMEOUT,
+            payload = payload
+        )
+
+        return if (ack?.status == AckStatus.OK) {
+            Log.d(TAG, "Set idle timeout: $minutes minutes")
+            Result.success(Unit)
+        } else {
+            val detail = when (ack?.detail) {
+                AckDetail.PARAM_OUT_OF_RANGE -> "Value out of range"
+                else -> "Set idle timeout failed: ${ack?.status}"
+            }
+            Log.e(TAG, "setIdleTimeout failed: $detail")
+            Result.failure(RuntimeException(detail))
+        }
+    }
+
+    override suspend fun getIdleTimeout(): Result<Int> {
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.GET_IDLE_TIMEOUT,
+            payload = byteArrayOf()
+        )
+
+        return if (ack?.status == AckStatus.OK && ack.optionalData.isNotEmpty()) {
+            val minutes = ack.optionalData[0].toInt() and 0xFF
+            Log.d(TAG, "Get idle timeout: $minutes minutes")
+            Result.success(minutes)
+        } else {
+            val detail = "Get idle timeout failed: ${ack?.status}"
+            Log.e(TAG, detail)
+            Result.failure(RuntimeException(detail))
+        }
+    }
 }

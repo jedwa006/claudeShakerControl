@@ -181,18 +181,31 @@ class SettingsViewModel @Inject constructor(
     fun setLazyPollingEnabled(enabled: Boolean) {
         viewModelScope.launch {
             devicePreferences.setLazyPollingEnabled(enabled)
-            // TODO: Send command to firmware to enable/disable lazy polling
-            // machineRepository.setLazyPolling(enabled, lazyPollingIdleTimeoutMinutes.value)
+            // Send command to firmware: 0 = disabled, else use configured timeout
+            val timeout = if (enabled) lazyPollingIdleTimeoutMinutes.value else 0
+            machineRepository.setIdleTimeout(timeout)
         }
     }
 
     fun setLazyPollingIdleTimeoutMinutes(minutes: Int) {
         viewModelScope.launch {
             devicePreferences.setLazyPollingIdleTimeoutMinutes(minutes)
-            // TODO: Send command to firmware with new timeout
-            // if (lazyPollingEnabled.value) {
-            //     machineRepository.setLazyPolling(true, minutes)
-            // }
+            // Send command to firmware if lazy polling is enabled
+            if (lazyPollingEnabled.value) {
+                machineRepository.setIdleTimeout(minutes)
+            }
+        }
+    }
+
+    /**
+     * Sync local lazy polling settings to MCU after connection established.
+     * Call this when the connection state changes to LIVE.
+     */
+    fun syncLazyPollingToMcu() {
+        viewModelScope.launch {
+            val enabled = lazyPollingEnabled.value
+            val timeout = if (enabled) lazyPollingIdleTimeoutMinutes.value else 0
+            machineRepository.setIdleTimeout(timeout)
         }
     }
 }

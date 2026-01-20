@@ -600,4 +600,18 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
         mockRegisters[Pair(controllerId, address)] = value
         return Result.success(Unit)
     }
+
+    // Mock idle timeout storage
+    private var mockIdleTimeout = 5 // Default 5 minutes
+
+    override suspend fun setIdleTimeout(minutes: Int): Result<Unit> {
+        delay(50) // Simulate command delay
+        mockIdleTimeout = minutes
+        return Result.success(Unit)
+    }
+
+    override suspend fun getIdleTimeout(): Result<Int> {
+        delay(50) // Simulate command delay
+        return Result.success(mockIdleTimeout)
+    }
 }

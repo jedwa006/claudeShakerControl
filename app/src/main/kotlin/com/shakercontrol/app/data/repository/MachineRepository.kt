@@ -118,4 +118,18 @@ interface MachineRepository {
      * @param value Value to write (as raw u16)
      */
     suspend fun writeRegister(controllerId: Int, address: Int, value: Int): Result<Unit>
+
+    // Lazy polling configuration
+    /**
+     * Set the idle timeout for lazy polling on the MCU.
+     * @param minutes Timeout in minutes (0=disabled, 1-255=enabled)
+     * When idle for this duration, the MCU reduces RS-485 polling rate.
+     */
+    suspend fun setIdleTimeout(minutes: Int): Result<Unit>
+
+    /**
+     * Get the current idle timeout setting from the MCU.
+     * @return Current timeout in minutes (0=disabled)
+     */
+    suspend fun getIdleTimeout(): Result<Int>
 }

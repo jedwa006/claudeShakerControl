@@ -74,6 +74,10 @@ object CommandId {
     const val WRITE_REGISTER: Short = 0x0031
     const val WRITE_REGISTERS: Short = 0x0032
 
+    // Configuration commands
+    const val SET_IDLE_TIMEOUT: Short = 0x0040
+    const val GET_IDLE_TIMEOUT: Short = 0x0041
+
     // Maintenance / diagnostics
     const val REQUEST_SNAPSHOT_NOW: Short = 0x00F0.toShort()
     const val CLEAR_WARNINGS: Short = 0x00F1.toShort()
