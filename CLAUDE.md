@@ -138,9 +138,12 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradle
 ./scripts/screenshot-test.sh capture
 ./scripts/screenshot-test.sh compare
 # If intentional changes: ./scripts/screenshot-test.sh update
+
+# 5. Reinstall app for manual testing (UI tests uninstall the app)
+JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew installDebug
 ```
 
-**Claude workflow**: Before major PRs, automatically run steps 1-4 above. If screenshot comparison shows differences, review the diff images in `screenshots/diff/` and update reference if changes are intentional.
+**Claude workflow**: Before major PRs, automatically run steps 1-5 above. If screenshot comparison shows differences, review the diff images in `screenshots/diff/` and update reference if changes are intentional. Always reinstall after UI tests so the user can manually verify changes.
 
 ### Deep Links (Debug Navigation)
 The app supports deep links for programmatic navigation and actions. Use these via adb:
