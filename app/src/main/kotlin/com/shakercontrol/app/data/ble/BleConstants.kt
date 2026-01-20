@@ -62,6 +62,12 @@ object CommandId {
     const val SET_SV: Short = 0x0020
     const val SET_MODE: Short = 0x0021
     const val REQUEST_PV_SV_REFRESH: Short = 0x0022
+    const val SET_PID_PARAMS: Short = 0x0023
+    const val READ_PID_PARAMS: Short = 0x0024
+    const val START_AUTOTUNE: Short = 0x0025
+    const val STOP_AUTOTUNE: Short = 0x0026
+    const val SET_ALARM_LIMITS: Short = 0x0027
+    const val READ_ALARM_LIMITS: Short = 0x0028
 
     // Maintenance / diagnostics
     const val REQUEST_SNAPSHOT_NOW: Short = 0x00F0.toShort()

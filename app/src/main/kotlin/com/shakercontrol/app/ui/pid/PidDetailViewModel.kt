@@ -48,6 +48,8 @@ class PidDetailViewModel @Inject constructor(
                 val result = machineRepository.setSetpoint(controllerId, setpoint)
                 result.fold(
                     onSuccess = {
+                        // Force poll after write for immediate UI update
+                        machineRepository.requestPvSvRefresh(controllerId)
                         _uiEvents.emit(PidUiEvent.CommandSuccess)
                     },
                     onFailure = { error ->

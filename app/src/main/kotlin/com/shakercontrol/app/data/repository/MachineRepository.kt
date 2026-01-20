@@ -67,6 +67,13 @@ interface MachineRepository {
     // PID control commands
     suspend fun setSetpoint(controllerId: Int, setpoint: Float): Result<Unit>
     suspend fun setMode(controllerId: Int, mode: PidMode): Result<Unit>
+    suspend fun requestPvSvRefresh(controllerId: Int): Result<Unit>
+    suspend fun setPidParams(controllerId: Int, pGain: Float, iTime: Int, dTime: Int): Result<Unit>
+    suspend fun readPidParams(controllerId: Int): Result<PidParams>
+    suspend fun startAutotune(controllerId: Int): Result<Unit>
+    suspend fun stopAutotune(controllerId: Int): Result<Unit>
+    suspend fun setAlarmLimits(controllerId: Int, alarm1: Float, alarm2: Float): Result<Unit>
+    suspend fun readAlarmLimits(controllerId: Int): Result<AlarmLimits>
 
     // Alarm commands
     suspend fun acknowledgeAlarm(alarmId: String): Result<Unit>

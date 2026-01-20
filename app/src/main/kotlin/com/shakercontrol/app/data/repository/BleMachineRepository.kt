@@ -5,6 +5,8 @@ import com.shakercontrol.app.data.ble.*
 import com.shakercontrol.app.domain.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -801,6 +803,165 @@ class BleMachineRepository @Inject constructor(
             val detail = when (ack?.detail) {
                 AckDetail.CONTROLLER_OFFLINE -> "Controller offline"
                 else -> "Rejected: ${ack?.status}"
+            }
+            Result.failure(RuntimeException(detail))
+        }
+    }
+
+    override suspend fun requestPvSvRefresh(controllerId: Int): Result<Unit> {
+        require(controllerId in 1..3) { "Controller ID must be 1-3" }
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.REQUEST_PV_SV_REFRESH,
+            payload = CommandPayloadBuilder.requestPvSvRefresh(controllerId)
+        )
+
+        return if (ack?.status == AckStatus.OK) {
+            Result.success(Unit)
+        } else {
+            Result.failure(RuntimeException("Refresh rejected: ${ack?.status}"))
+        }
+    }
+
+    override suspend fun setPidParams(
+        controllerId: Int,
+        pGain: Float,
+        iTime: Int,
+        dTime: Int
+    ): Result<Unit> {
+        require(controllerId in 1..3) { "Controller ID must be 1-3" }
+
+        val pGainX10 = (pGain * 10).toInt().toShort()
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.SET_PID_PARAMS,
+            payload = CommandPayloadBuilder.setPidParams(controllerId, pGainX10, iTime, dTime)
+        )
+
+        return if (ack?.status == AckStatus.OK) {
+            Result.success(Unit)
+        } else {
+            val detail = when (ack?.detail) {
+                AckDetail.CONTROLLER_OFFLINE -> "Controller offline"
+                AckDetail.PARAM_OUT_OF_RANGE -> "Parameter out of range"
+                else -> "Rejected: ${ack?.status}"
+            }
+            Result.failure(RuntimeException(detail))
+        }
+    }
+
+    override suspend fun readPidParams(controllerId: Int): Result<PidParams> {
+        require(controllerId in 1..3) { "Controller ID must be 1-3" }
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.READ_PID_PARAMS,
+            payload = CommandPayloadBuilder.readPidParams(controllerId)
+        )
+
+        return if (ack?.status == AckStatus.OK && ack.optionalData.size >= 7) {
+            val buffer = ByteBuffer.wrap(ack.optionalData).order(ByteOrder.LITTLE_ENDIAN)
+            val echoId = buffer.get().toInt() and 0xFF
+            val pGainX10 = buffer.short
+            val iTimeVal = buffer.short.toInt() and 0xFFFF
+            val dTimeVal = buffer.short.toInt() and 0xFFFF
+
+            Result.success(PidParams(
+                controllerId = echoId,
+                pGain = pGainX10 / 10f,
+                iTime = iTimeVal,
+                dTime = dTimeVal
+            ))
+        } else {
+            val detail = when (ack?.detail) {
+                AckDetail.CONTROLLER_OFFLINE -> "Controller offline"
+                else -> "Read failed: ${ack?.status}"
+            }
+            Result.failure(RuntimeException(detail))
+        }
+    }
+
+    override suspend fun startAutotune(controllerId: Int): Result<Unit> {
+        require(controllerId in 1..3) { "Controller ID must be 1-3" }
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.START_AUTOTUNE,
+            payload = CommandPayloadBuilder.startAutotune(controllerId)
+        )
+
+        return if (ack?.status == AckStatus.OK) {
+            Result.success(Unit)
+        } else {
+            val detail = when (ack?.detail) {
+                AckDetail.CONTROLLER_OFFLINE -> "Controller offline"
+                else -> "Start autotune rejected: ${ack?.status}"
+            }
+            Result.failure(RuntimeException(detail))
+        }
+    }
+
+    override suspend fun stopAutotune(controllerId: Int): Result<Unit> {
+        require(controllerId in 1..3) { "Controller ID must be 1-3" }
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.STOP_AUTOTUNE,
+            payload = CommandPayloadBuilder.stopAutotune(controllerId)
+        )
+
+        return if (ack?.status == AckStatus.OK) {
+            Result.success(Unit)
+        } else {
+            Result.failure(RuntimeException("Stop autotune rejected: ${ack?.status}"))
+        }
+    }
+
+    override suspend fun setAlarmLimits(
+        controllerId: Int,
+        alarm1: Float,
+        alarm2: Float
+    ): Result<Unit> {
+        require(controllerId in 1..3) { "Controller ID must be 1-3" }
+
+        val alarm1X10 = (alarm1 * 10).toInt().toShort()
+        val alarm2X10 = (alarm2 * 10).toInt().toShort()
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.SET_ALARM_LIMITS,
+            payload = CommandPayloadBuilder.setAlarmLimits(controllerId, alarm1X10, alarm2X10)
+        )
+
+        return if (ack?.status == AckStatus.OK) {
+            Result.success(Unit)
+        } else {
+            val detail = when (ack?.detail) {
+                AckDetail.CONTROLLER_OFFLINE -> "Controller offline"
+                AckDetail.PARAM_OUT_OF_RANGE -> "Limit out of range"
+                else -> "Rejected: ${ack?.status}"
+            }
+            Result.failure(RuntimeException(detail))
+        }
+    }
+
+    override suspend fun readAlarmLimits(controllerId: Int): Result<AlarmLimits> {
+        require(controllerId in 1..3) { "Controller ID must be 1-3" }
+
+        val ack = bleManager.sendCommand(
+            cmdId = CommandId.READ_ALARM_LIMITS,
+            payload = CommandPayloadBuilder.readAlarmLimits(controllerId)
+        )
+
+        return if (ack?.status == AckStatus.OK && ack.optionalData.size >= 5) {
+            val buffer = ByteBuffer.wrap(ack.optionalData).order(ByteOrder.LITTLE_ENDIAN)
+            val echoId = buffer.get().toInt() and 0xFF
+            val alarm1X10 = buffer.short
+            val alarm2X10 = buffer.short
+
+            Result.success(AlarmLimits(
+                controllerId = echoId,
+                alarm1 = alarm1X10 / 10f,
+                alarm2 = alarm2X10 / 10f
+            ))
+        } else {
+            val detail = when (ack?.detail) {
+                AckDetail.CONTROLLER_OFFLINE -> "Controller offline"
+                else -> "Read failed: ${ack?.status}"
             }
             Result.failure(RuntimeException(detail))
         }

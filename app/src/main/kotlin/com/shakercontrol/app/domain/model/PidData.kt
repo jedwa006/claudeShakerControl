@@ -128,6 +128,25 @@ enum class PidMode {
 }
 
 /**
+ * PID tuning parameters from READ_PID_PARAMS response.
+ */
+data class PidParams(
+    val controllerId: Int,
+    val pGain: Float,      // Proportional gain (descaled from x10)
+    val iTime: Int,        // Integral time in seconds (0 = disabled)
+    val dTime: Int         // Derivative time in seconds (0 = disabled)
+)
+
+/**
+ * Alarm limit setpoints from READ_ALARM_LIMITS response.
+ */
+data class AlarmLimits(
+    val controllerId: Int,
+    val alarm1: Float,     // Alarm 1 setpoint in °C (descaled from x10)
+    val alarm2: Float      // Alarm 2 setpoint in °C (descaled from x10)
+)
+
+/**
  * Capability levels as defined in docs/dashboard-sec-v1.md section 8.
  */
 enum class CapabilityLevel(val value: Int) {

@@ -237,6 +237,60 @@ object CommandPayloadBuilder {
         byteArrayOf(controllerId.toByte(), mode.code)
 
     /**
+     * REQUEST_PV_SV_REFRESH payload: controller_id(u8 1..3)
+     * Forces an immediate Modbus poll of the controller.
+     */
+    fun requestPvSvRefresh(controllerId: Int): ByteArray =
+        byteArrayOf(controllerId.toByte())
+
+    /**
+     * SET_PID_PARAMS payload: controller_id(u8), p_gain_x10(i16), i_time(u16), d_time(u16)
+     */
+    fun setPidParams(controllerId: Int, pGainX10: Short, iTime: Int, dTime: Int): ByteArray =
+        ByteBuffer.allocate(7)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .put(controllerId.toByte())
+            .putShort(pGainX10)
+            .putShort(iTime.toShort())
+            .putShort(dTime.toShort())
+            .array()
+
+    /**
+     * READ_PID_PARAMS payload: controller_id(u8)
+     */
+    fun readPidParams(controllerId: Int): ByteArray =
+        byteArrayOf(controllerId.toByte())
+
+    /**
+     * START_AUTOTUNE payload: controller_id(u8)
+     */
+    fun startAutotune(controllerId: Int): ByteArray =
+        byteArrayOf(controllerId.toByte())
+
+    /**
+     * STOP_AUTOTUNE payload: controller_id(u8)
+     */
+    fun stopAutotune(controllerId: Int): ByteArray =
+        byteArrayOf(controllerId.toByte())
+
+    /**
+     * SET_ALARM_LIMITS payload: controller_id(u8), alarm1_x10(i16), alarm2_x10(i16)
+     */
+    fun setAlarmLimits(controllerId: Int, alarm1X10: Short, alarm2X10: Short): ByteArray =
+        ByteBuffer.allocate(5)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .put(controllerId.toByte())
+            .putShort(alarm1X10)
+            .putShort(alarm2X10)
+            .array()
+
+    /**
+     * READ_ALARM_LIMITS payload: controller_id(u8)
+     */
+    fun readAlarmLimits(controllerId: Int): ByteArray =
+        byteArrayOf(controllerId.toByte())
+
+    /**
      * PAUSE_RUN payload: session_id(u32)
      */
     fun pauseRun(sessionId: Int): ByteArray =

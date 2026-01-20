@@ -384,6 +384,82 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
         return Result.success(Unit)
     }
 
+    override suspend fun requestPvSvRefresh(controllerId: Int): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        delay(100)
+        return Result.success(Unit)
+    }
+
+    override suspend fun setPidParams(
+        controllerId: Int,
+        pGain: Float,
+        iTime: Int,
+        dTime: Int
+    ): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        delay(200)
+        return Result.success(Unit)
+    }
+
+    override suspend fun readPidParams(controllerId: Int): Result<PidParams> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        delay(200)
+        // Return mock PID parameters
+        return Result.success(PidParams(
+            controllerId = controllerId,
+            pGain = 10.0f,
+            iTime = 120,
+            dTime = 30
+        ))
+    }
+
+    override suspend fun startAutotune(controllerId: Int): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        delay(200)
+        return Result.success(Unit)
+    }
+
+    override suspend fun stopAutotune(controllerId: Int): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        delay(200)
+        return Result.success(Unit)
+    }
+
+    override suspend fun setAlarmLimits(
+        controllerId: Int,
+        alarm1: Float,
+        alarm2: Float
+    ): Result<Unit> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        delay(200)
+        return Result.success(Unit)
+    }
+
+    override suspend fun readAlarmLimits(controllerId: Int): Result<AlarmLimits> {
+        if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        delay(200)
+        // Return mock alarm limits
+        return Result.success(AlarmLimits(
+            controllerId = controllerId,
+            alarm1 = 50.0f,
+            alarm2 = -50.0f
+        ))
+    }
+
     override suspend fun acknowledgeAlarm(alarmId: String): Result<Unit> {
         if (_systemStatus.value.connectionState != ConnectionState.LIVE) {
             return Result.failure(IllegalStateException("Not connected"))
