@@ -17,6 +17,16 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Controller build information for display in popup dialog.
+ */
+data class ControllerBuildInfo(
+    val firmwareVersion: String?,
+    val buildId: String?,
+    val protocolVersion: Int?,
+    val isConnected: Boolean
+)
+
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val machineRepository: MachineRepository,
@@ -47,6 +57,24 @@ class SettingsViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = "Not connected"
+        )
+
+    /**
+     * Controller build info for the popup dialog.
+     */
+    val controllerBuildInfo: StateFlow<ControllerBuildInfo> = machineRepository.systemStatus
+        .map { status ->
+            ControllerBuildInfo(
+                firmwareVersion = status.firmwareVersion,
+                buildId = status.firmwareBuildId,
+                protocolVersion = status.protocolVersion,
+                isConnected = status.connectionState == ConnectionState.LIVE
+            )
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = ControllerBuildInfo(null, null, null, false)
         )
 
     /**

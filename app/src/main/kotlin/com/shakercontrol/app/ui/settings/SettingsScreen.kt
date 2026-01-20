@@ -19,6 +19,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.shakercontrol.app.BuildConfig
 import com.shakercontrol.app.data.ble.BleConnectionState
 import com.shakercontrol.app.data.preferences.LastConnectedDevice
 import com.shakercontrol.app.ui.theme.SemanticColors
@@ -35,6 +36,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val controllerVersion by viewModel.controllerVersion.collectAsStateWithLifecycle()
+    val controllerBuildInfo by viewModel.controllerBuildInfo.collectAsStateWithLifecycle()
     val isServiceModeEnabled by viewModel.isServiceModeEnabled.collectAsStateWithLifecycle()
     val connectionState by viewModel.connectionState.collectAsStateWithLifecycle()
     val connectedDeviceName by viewModel.connectedDeviceName.collectAsStateWithLifecycle()
@@ -43,6 +45,7 @@ fun SettingsScreen(
 
     SettingsScreenContent(
         controllerVersion = controllerVersion,
+        controllerBuildInfo = controllerBuildInfo,
         isServiceModeEnabled = isServiceModeEnabled,
         onServiceModeToggle = viewModel::toggleServiceMode,
         connectionState = connectionState,
@@ -60,6 +63,7 @@ fun SettingsScreen(
 @Composable
 private fun SettingsScreenContent(
     controllerVersion: String,
+    controllerBuildInfo: ControllerBuildInfo,
     isServiceModeEnabled: Boolean,
     onServiceModeToggle: () -> Unit,
     connectionState: BleConnectionState,
@@ -73,6 +77,15 @@ private fun SettingsScreenContent(
     onNavigateToDevices: () -> Unit
 ) {
     var selectedTheme by remember { mutableStateOf("Dark") }
+    var showControllerInfoDialog by remember { mutableStateOf(false) }
+
+    // Controller build info popup dialog
+    if (showControllerInfoDialog) {
+        ControllerInfoDialog(
+            buildInfo = controllerBuildInfo,
+            onDismiss = { showControllerInfoDialog = false }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -194,10 +207,60 @@ private fun SettingsScreenContent(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                SettingRow(title = "App version", value = "0.1.0")
-                SettingRow(title = "Controller version", value = controllerVersion)
+                SettingRow(title = "App version", value = BuildConfig.VERSION_NAME)
+                SettingRow(
+                    title = "Controller version",
+                    value = controllerVersion,
+                    onClick = if (controllerBuildInfo.isConnected) {
+                        { showControllerInfoDialog = true }
+                    } else null
+                )
             }
         }
+    }
+}
+
+/**
+ * Dialog showing detailed controller build information.
+ */
+@Composable
+private fun ControllerInfoDialog(
+    buildInfo: ControllerBuildInfo,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Controller Build Info") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                InfoRow("Firmware version", buildInfo.firmwareVersion ?: "Unknown")
+                InfoRow("Build ID", buildInfo.buildId ?: "Unknown")
+                InfoRow("Protocol version", buildInfo.protocolVersion?.toString() ?: "Unknown")
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
+}
+
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium
+        )
     }
 }
 
@@ -411,7 +474,8 @@ private fun SettingsScreenPreview() {
     ShakerControlTheme {
         Surface {
             SettingsScreenContent(
-                controllerVersion = "0.2.0+26011901",
+                controllerVersion = "Not connected",
+                controllerBuildInfo = ControllerBuildInfo(null, null, null, false),
                 isServiceModeEnabled = false,
                 onServiceModeToggle = {},
                 connectionState = BleConnectionState.DISCONNECTED,
@@ -435,6 +499,7 @@ private fun SettingsScreenConnectedPreview() {
         Surface {
             SettingsScreenContent(
                 controllerVersion = "0.2.0+26011901",
+                controllerBuildInfo = ControllerBuildInfo("0.2.0", "26011901", 1, true),
                 isServiceModeEnabled = false,
                 onServiceModeToggle = {},
                 connectionState = BleConnectionState.CONNECTED,
@@ -458,6 +523,7 @@ private fun SettingsScreenServiceModePreview() {
         Surface {
             SettingsScreenContent(
                 controllerVersion = "0.2.0+26011901",
+                controllerBuildInfo = ControllerBuildInfo("0.2.0", "26011901", 1, true),
                 isServiceModeEnabled = true,
                 onServiceModeToggle = {},
                 connectionState = BleConnectionState.CONNECTED,
