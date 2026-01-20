@@ -603,10 +603,13 @@ class MockMachineRepository @Inject constructor() : MachineRepository {
 
     // Mock idle timeout storage
     private var mockIdleTimeout = 5 // Default 5 minutes
+    private val _mcuIdleTimeoutMinutes = MutableStateFlow<Int?>(5)
+    override val mcuIdleTimeoutMinutes: StateFlow<Int?> = _mcuIdleTimeoutMinutes.asStateFlow()
 
     override suspend fun setIdleTimeout(minutes: Int): Result<Unit> {
         delay(50) // Simulate command delay
         mockIdleTimeout = minutes
+        _mcuIdleTimeoutMinutes.value = minutes
         return Result.success(Unit)
     }
 

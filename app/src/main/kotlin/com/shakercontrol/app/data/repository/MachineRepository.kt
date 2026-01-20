@@ -121,6 +121,13 @@ interface MachineRepository {
 
     // Lazy polling configuration
     /**
+     * MCU's current idle timeout setting.
+     * Synced from MCU on connection. null if not yet synced or disconnected.
+     * UI should observe this to display the actual MCU value.
+     */
+    val mcuIdleTimeoutMinutes: StateFlow<Int?>
+
+    /**
      * Set the idle timeout for lazy polling on the MCU.
      * @param minutes Timeout in minutes (0=disabled, 1-255=enabled)
      * When idle for this duration, the MCU reduces RS-485 polling rate.

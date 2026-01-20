@@ -1,5 +1,6 @@
 package com.shakercontrol.app.ui.settings
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shakercontrol.app.data.ble.BleConnectionState
@@ -12,6 +13,9 @@ import com.shakercontrol.app.domain.model.SystemStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -33,6 +37,28 @@ class SettingsViewModel @Inject constructor(
     private val bleManager: BleManager,
     private val devicePreferences: DevicePreferences
 ) : ViewModel() {
+
+    init {
+        // Observe MCU idle timeout and sync to local preferences
+        // MCU is the source of truth - when we connect, we read the MCU's value
+        viewModelScope.launch {
+            machineRepository.mcuIdleTimeoutMinutes
+                .filterNotNull()
+                .distinctUntilChanged()
+                .collectLatest { mcuMinutes ->
+                    Log.d(TAG, "MCU idle timeout synced: $mcuMinutes minutes")
+                    // Update local preferences to match MCU value
+                    if (mcuMinutes == 0) {
+                        // MCU has lazy polling disabled
+                        devicePreferences.setLazyPollingEnabled(false)
+                    } else {
+                        // MCU has lazy polling enabled with this timeout
+                        devicePreferences.setLazyPollingEnabled(true)
+                        devicePreferences.setLazyPollingIdleTimeoutMinutes(mcuMinutes)
+                    }
+                }
+        }
+    }
 
     val systemStatus: StateFlow<SystemStatus> = machineRepository.systemStatus
         .stateIn(
@@ -183,7 +209,9 @@ class SettingsViewModel @Inject constructor(
             devicePreferences.setLazyPollingEnabled(enabled)
             // Send command to firmware: 0 = disabled, else use configured timeout
             val timeout = if (enabled) lazyPollingIdleTimeoutMinutes.value else 0
-            machineRepository.setIdleTimeout(timeout)
+            Log.d(TAG, "setLazyPollingEnabled: enabled=$enabled, sending timeout=$timeout minutes")
+            val result = machineRepository.setIdleTimeout(timeout)
+            Log.d(TAG, "setIdleTimeout result: ${result.isSuccess}, ${result.exceptionOrNull()?.message ?: "OK"}")
         }
     }
 
@@ -192,20 +220,30 @@ class SettingsViewModel @Inject constructor(
             devicePreferences.setLazyPollingIdleTimeoutMinutes(minutes)
             // Send command to firmware if lazy polling is enabled
             if (lazyPollingEnabled.value) {
-                machineRepository.setIdleTimeout(minutes)
+                Log.d(TAG, "setLazyPollingIdleTimeoutMinutes: sending timeout=$minutes minutes")
+                val result = machineRepository.setIdleTimeout(minutes)
+                Log.d(TAG, "setIdleTimeout result: ${result.isSuccess}, ${result.exceptionOrNull()?.message ?: "OK"}")
+            } else {
+                Log.d(TAG, "setLazyPollingIdleTimeoutMinutes: lazy polling disabled, not sending")
             }
         }
     }
 
     /**
      * Sync local lazy polling settings to MCU after connection established.
-     * Call this when the connection state changes to LIVE.
+     * Called automatically when connection state becomes CONNECTED.
      */
-    fun syncLazyPollingToMcu() {
+    private fun syncLazyPollingToMcu() {
         viewModelScope.launch {
             val enabled = lazyPollingEnabled.value
             val timeout = if (enabled) lazyPollingIdleTimeoutMinutes.value else 0
-            machineRepository.setIdleTimeout(timeout)
+            Log.d(TAG, "syncLazyPollingToMcu: enabled=$enabled, sending timeout=$timeout minutes")
+            val result = machineRepository.setIdleTimeout(timeout)
+            Log.d(TAG, "syncLazyPollingToMcu result: ${result.isSuccess}, ${result.exceptionOrNull()?.message ?: "OK"}")
         }
+    }
+
+    companion object {
+        private const val TAG = "SettingsViewModel"
     }
 }

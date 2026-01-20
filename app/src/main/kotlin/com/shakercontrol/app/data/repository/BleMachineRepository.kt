@@ -122,6 +122,10 @@ class BleMachineRepository @Inject constructor(
     private val _capabilityOverrides = MutableStateFlow<SubsystemCapabilities?>(null)
     override val capabilityOverrides: StateFlow<SubsystemCapabilities?> = _capabilityOverrides.asStateFlow()
 
+    // MCU idle timeout (synced on connection)
+    private val _mcuIdleTimeoutMinutes = MutableStateFlow<Int?>(null)
+    override val mcuIdleTimeoutMinutes: StateFlow<Int?> = _mcuIdleTimeoutMinutes.asStateFlow()
+
     init {
         // Monitor BLE connection state
         scope.launch {
@@ -229,9 +233,28 @@ class BleMachineRepository @Inject constructor(
                 Log.w(TAG, ">>> Session opened: id=${sessionData.sessionId}, lease=${sessionData.leaseMs}ms")
                 startHeartbeat()
                 startRssiPolling()
+                syncIdleTimeoutFromMcu()
             }
         } else {
             Log.e(TAG, ">>> Failed to open session: ${ack?.status}, detail=${ack?.detail}")
+        }
+    }
+
+    /**
+     * Sync idle timeout value from MCU after session is established.
+     * This ensures the app displays the actual MCU value.
+     */
+    private fun syncIdleTimeoutFromMcu() {
+        scope.launch {
+            delay(300) // Let session stabilize
+            val result = getIdleTimeout()
+            if (result.isSuccess) {
+                val minutes = result.getOrThrow()
+                Log.w(TAG, ">>> Synced idle timeout from MCU: $minutes minutes")
+                _mcuIdleTimeoutMinutes.value = minutes
+            } else {
+                Log.e(TAG, ">>> Failed to sync idle timeout from MCU: ${result.exceptionOrNull()?.message}")
+            }
         }
     }
 
@@ -253,6 +276,7 @@ class BleMachineRepository @Inject constructor(
         sessionId = null
         lastKeepaliveTime = 0L
         rssiHistory.clear()
+        _mcuIdleTimeoutMinutes.value = null // Clear synced value on disconnect
     }
 
     private fun startHeartbeat() {
@@ -1193,6 +1217,7 @@ class BleMachineRepository @Inject constructor(
     override suspend fun setIdleTimeout(minutes: Int): Result<Unit> {
         require(minutes in 0..255) { "Timeout must be 0-255 minutes" }
 
+        Log.w(TAG, ">>> SET_IDLE_TIMEOUT: sending $minutes minutes (0x${minutes.toString(16)})")
         val payload = byteArrayOf(minutes.toByte())
 
         val ack = bleManager.sendCommand(
@@ -1200,15 +1225,18 @@ class BleMachineRepository @Inject constructor(
             payload = payload
         )
 
+        Log.w(TAG, "<<< SET_IDLE_TIMEOUT ACK: status=${ack?.status}, detail=${ack?.detail}, data=${ack?.optionalData?.contentToString()}")
+
         return if (ack?.status == AckStatus.OK) {
-            Log.d(TAG, "Set idle timeout: $minutes minutes")
+            Log.w(TAG, "Set idle timeout SUCCESS: $minutes minutes")
+            _mcuIdleTimeoutMinutes.value = minutes // Update local state to match MCU
             Result.success(Unit)
         } else {
             val detail = when (ack?.detail) {
                 AckDetail.PARAM_OUT_OF_RANGE -> "Value out of range"
                 else -> "Set idle timeout failed: ${ack?.status}"
             }
-            Log.e(TAG, "setIdleTimeout failed: $detail")
+            Log.e(TAG, "setIdleTimeout FAILED: $detail")
             Result.failure(RuntimeException(detail))
         }
     }
