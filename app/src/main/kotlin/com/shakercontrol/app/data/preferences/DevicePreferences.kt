@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,6 +32,7 @@ class DevicePreferences @Inject constructor(
         val AUTO_RECONNECT_ENABLED = booleanPreferencesKey("auto_reconnect_enabled")
         val LAZY_POLLING_ENABLED = booleanPreferencesKey("lazy_polling_enabled")
         val LAZY_POLLING_IDLE_TIMEOUT_MINUTES = intPreferencesKey("lazy_polling_idle_timeout_minutes")
+        val DEMO_MODE_ENABLED = booleanPreferencesKey("demo_mode_enabled")
     }
 
     companion object {
@@ -102,6 +104,35 @@ class DevicePreferences @Inject constructor(
     suspend fun setLazyPollingIdleTimeoutMinutes(minutes: Int) {
         context.dataStore.edit { prefs ->
             prefs[Keys.LAZY_POLLING_IDLE_TIMEOUT_MINUTES] = minutes
+        }
+    }
+
+    // ==========================================
+    // Demo Mode Settings
+    // ==========================================
+
+    /**
+     * Whether demo mode is enabled.
+     * When enabled, the app uses MockMachineRepository instead of BLE.
+     * Requires app restart to take effect.
+     */
+    val demoModeEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.DEMO_MODE_ENABLED] ?: false
+    }
+
+    /**
+     * Synchronous check for demo mode - used during Hilt injection.
+     * This blocks briefly to read the preference value.
+     */
+    fun isDemoModeEnabledSync(): Boolean {
+        return kotlinx.coroutines.runBlocking {
+            demoModeEnabled.first()
+        }
+    }
+
+    suspend fun setDemoModeEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.DEMO_MODE_ENABLED] = enabled
         }
     }
 }

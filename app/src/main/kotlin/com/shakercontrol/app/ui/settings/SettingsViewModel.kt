@@ -243,6 +243,27 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // ==========================================
+    // Demo Mode Settings
+    // ==========================================
+
+    val demoModeEnabled: StateFlow<Boolean> = devicePreferences.demoModeEnabled
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
+    /**
+     * Toggle demo mode. Requires app restart to take effect.
+     */
+    fun setDemoModeEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            Log.d(TAG, "setDemoModeEnabled: $enabled (requires restart)")
+            devicePreferences.setDemoModeEnabled(enabled)
+        }
+    }
+
     companion object {
         private const val TAG = "SettingsViewModel"
     }
