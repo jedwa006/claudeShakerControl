@@ -1,40 +1,48 @@
 package com.shakercontrol.app.di
 
+import android.util.Log
+import com.shakercontrol.app.data.preferences.DevicePreferences
 import com.shakercontrol.app.data.repository.BleMachineRepository
 import com.shakercontrol.app.data.repository.MachineRepository
 import com.shakercontrol.app.data.repository.MockMachineRepository
-import dagger.Binds
 import dagger.Module
+import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import javax.inject.Named
 import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class AppModule {
+object AppModule {
+
+    private const val TAG = "AppModule"
 
     /**
-     * Bind the repository as the primary MachineRepository.
+     * Provide the repository based on demo mode preference.
      *
-     * For emulator/testing: Use MockMachineRepository (has working timer countdown)
-     * For real device with MCU: Use BleMachineRepository
+     * When demo mode is enabled (checked at app startup), uses MockMachineRepository
+     * which simulates a connected controller with working telemetry.
      *
-     * TODO: Add build flavor or runtime toggle for this
+     * When demo mode is disabled (default), uses BleMachineRepository
+     * for real BLE communication with the ESP32-S3 MCU.
+     *
+     * Note: Changing this setting requires an app restart to take effect.
      */
-    @Binds
+    @Provides
     @Singleton
-    abstract fun bindMachineRepository(
-        bleRepository: BleMachineRepository
-    ): MachineRepository
-
-    /**
-     * Also provide the mock repository for testing/preview.
-     */
-    @Binds
-    @Singleton
-    @Named("mock")
-    abstract fun bindMockMachineRepository(
+    fun provideMachineRepository(
+        devicePreferences: DevicePreferences,
+        bleRepository: BleMachineRepository,
         mockRepository: MockMachineRepository
-    ): MachineRepository
+    ): MachineRepository {
+        val isDemoMode = devicePreferences.isDemoModeEnabledSync()
+        Log.i(TAG, "Providing MachineRepository: demoMode=$isDemoMode")
+        return if (isDemoMode) {
+            Log.i(TAG, "Using MockMachineRepository (demo mode)")
+            mockRepository
+        } else {
+            Log.i(TAG, "Using BleMachineRepository (production mode)")
+            bleRepository
+        }
+    }
 }

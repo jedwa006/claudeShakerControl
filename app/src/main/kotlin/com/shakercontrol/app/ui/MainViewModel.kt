@@ -3,6 +3,7 @@ package com.shakercontrol.app.ui
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.shakercontrol.app.data.preferences.DevicePreferences
 import com.shakercontrol.app.data.repository.MachineRepository
 import com.shakercontrol.app.domain.model.PidMode
 import com.shakercontrol.app.domain.model.SystemStatus
@@ -15,7 +16,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
-    private val machineRepository: MachineRepository
+    private val machineRepository: MachineRepository,
+    private val devicePreferences: DevicePreferences
 ) : ViewModel() {
 
     companion object {
@@ -169,6 +171,32 @@ class MainViewModel @Inject constructor(
                 onSuccess = { Log.d(TAG, "Chilldown started (LN2 controller in AUTO)") },
                 onFailure = { Log.e(TAG, "Failed to start chilldown: ${it.message}") }
             )
+        }
+    }
+
+    // ==========================================
+    // Demo Mode (requires app restart)
+    // ==========================================
+
+    /**
+     * Enable demo mode via deep link.
+     * The app must be restarted for the change to take effect.
+     */
+    fun enableDemoMode() {
+        viewModelScope.launch {
+            Log.d(TAG, "Deep link: enableDemoMode (requires restart)")
+            devicePreferences.setDemoModeEnabled(true)
+        }
+    }
+
+    /**
+     * Disable demo mode via deep link.
+     * The app must be restarted for the change to take effect.
+     */
+    fun disableDemoMode() {
+        viewModelScope.launch {
+            Log.d(TAG, "Deep link: disableDemoMode (requires restart)")
+            devicePreferences.setDemoModeEnabled(false)
         }
     }
 }

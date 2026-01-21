@@ -83,6 +83,10 @@ fun ShakerControlApp(
                 DeepLinkAction.ToggleLight -> viewModel.toggleLight()
                 DeepLinkAction.ToggleDoor -> viewModel.toggleDoor()
                 DeepLinkAction.StartChilldown -> viewModel.startChilldown()
+
+                // Demo mode (requires restart)
+                DeepLinkAction.DemoModeEnable -> viewModel.enableDemoMode()
+                DeepLinkAction.DemoModeDisable -> viewModel.disableDemoMode()
             }
         }
     }
