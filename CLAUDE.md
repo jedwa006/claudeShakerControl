@@ -60,7 +60,7 @@ adb exec-out screencap -p > screenshot.png
 | Type | Count | Location | Command |
 |------|-------|----------|---------|
 | Unit tests | 101 | `app/src/test/` | `./gradlew testDebugUnitTest` |
-| UI tests | 11 | `app/src/androidTest/` | `./gradlew connectedDebugAndroidTest` |
+| UI tests | 12 | `app/src/androidTest/` | `./gradlew connectedDebugAndroidTest` |
 | Screenshot tests | Manual | `scripts/screenshot-test.sh` | See below |
 
 ### Unit Tests
@@ -172,6 +172,8 @@ adb shell am start -a android.intent.action.VIEW -d "shaker://action/disconnect"
 adb shell am start -a android.intent.action.VIEW -d "shaker://action/service-mode/enable" com.shakercontrol.app.debug
 adb shell am start -a android.intent.action.VIEW -d "shaker://action/service-mode/disable" com.shakercontrol.app.debug
 adb shell am start -a android.intent.action.VIEW -d "shaker://action/service-mode/toggle" com.shakercontrol.app.debug
+adb shell am start -a android.intent.action.VIEW -d "shaker://action/demo-mode/enable" com.shakercontrol.app.debug   # Enable demo mode (restart required)
+adb shell am start -a android.intent.action.VIEW -d "shaker://action/demo-mode/disable" com.shakercontrol.app.debug  # Disable demo mode (restart required)
 
 # Test deep links (for automated testing - v0.4.0+)
 # Relay control (channel 1-8, state 0=OFF/1=ON)

@@ -22,6 +22,8 @@ sealed class DeepLinkAction {
     data object Connect : DeepLinkAction()
     data object Disconnect : DeepLinkAction()
     data object Reconnect : DeepLinkAction()
+    data object DemoModeEnable : DeepLinkAction()
+    data object DemoModeDisable : DeepLinkAction()
 
     // Test actions for automated testing
     data class SetRelay(val channel: Int, val on: Boolean) : DeepLinkAction()
@@ -112,6 +114,13 @@ class MainActivity : ComponentActivity() {
                     pathSegments.getOrNull(0) == "connect" -> DeepLinkAction.Connect
                     pathSegments.getOrNull(0) == "disconnect" -> DeepLinkAction.Disconnect
                     pathSegments.getOrNull(0) == "reconnect" -> DeepLinkAction.Reconnect
+                    pathSegments.getOrNull(0) == "demo-mode" -> {
+                        when (pathSegments.getOrNull(1)) {
+                            "enable" -> DeepLinkAction.DemoModeEnable
+                            "disable" -> DeepLinkAction.DemoModeDisable
+                            else -> null
+                        }
+                    }
                     else -> null
                 }
                 DeepLinkResult(action = action)

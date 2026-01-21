@@ -44,6 +44,7 @@ fun SettingsScreen(
     val autoReconnectEnabled by viewModel.autoReconnectEnabled.collectAsStateWithLifecycle()
     val lazyPollingEnabled by viewModel.lazyPollingEnabled.collectAsStateWithLifecycle()
     val lazyPollingIdleTimeoutMinutes by viewModel.lazyPollingIdleTimeoutMinutes.collectAsStateWithLifecycle()
+    val demoModeEnabled by viewModel.demoModeEnabled.collectAsStateWithLifecycle()
 
     SettingsScreenContent(
         controllerVersion = controllerVersion,
@@ -62,7 +63,9 @@ fun SettingsScreen(
         lazyPollingEnabled = lazyPollingEnabled,
         lazyPollingIdleTimeoutMinutes = lazyPollingIdleTimeoutMinutes,
         onLazyPollingEnabledChanged = viewModel::setLazyPollingEnabled,
-        onLazyPollingIdleTimeoutChanged = viewModel::setLazyPollingIdleTimeoutMinutes
+        onLazyPollingIdleTimeoutChanged = viewModel::setLazyPollingIdleTimeoutMinutes,
+        demoModeEnabled = demoModeEnabled,
+        onDemoModeChanged = viewModel::setDemoModeEnabled
     )
 }
 
@@ -84,17 +87,52 @@ private fun SettingsScreenContent(
     lazyPollingEnabled: Boolean = false,
     lazyPollingIdleTimeoutMinutes: Int = 3,
     onLazyPollingEnabledChanged: (Boolean) -> Unit = {},
-    onLazyPollingIdleTimeoutChanged: (Int) -> Unit = {}
+    onLazyPollingIdleTimeoutChanged: (Int) -> Unit = {},
+    demoModeEnabled: Boolean = false,
+    onDemoModeChanged: (Boolean) -> Unit = {}
 ) {
     var selectedTheme by remember { mutableStateOf("Dark") }
     var showControllerInfoDialog by remember { mutableStateOf(false) }
     var showIdleTimeoutDropdown by remember { mutableStateOf(false) }
+    var showDemoModeRestartDialog by remember { mutableStateOf(false) }
+    var pendingDemoModeValue by remember { mutableStateOf(false) }
 
     // Controller build info popup dialog
     if (showControllerInfoDialog) {
         ControllerInfoDialog(
             buildInfo = controllerBuildInfo,
             onDismiss = { showControllerInfoDialog = false }
+        )
+    }
+
+    // Demo mode restart confirmation dialog
+    if (showDemoModeRestartDialog) {
+        AlertDialog(
+            onDismissRequest = { showDemoModeRestartDialog = false },
+            title = { Text(if (pendingDemoModeValue) "Enable Demo Mode?" else "Disable Demo Mode?") },
+            text = {
+                Text(
+                    if (pendingDemoModeValue)
+                        "Demo mode simulates a connected controller for demonstrations. The app will need to be restarted for this change to take effect."
+                    else
+                        "The app will switch back to real BLE communication. The app will need to be restarted for this change to take effect."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDemoModeChanged(pendingDemoModeValue)
+                        showDemoModeRestartDialog = false
+                    }
+                ) {
+                    Text("Restart Later")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDemoModeRestartDialog = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 
@@ -282,6 +320,56 @@ private fun SettingsScreenContent(
                             text = "Service mode active - manual controls enabled",
                             style = MaterialTheme.typography.labelMedium,
                             color = SemanticColors.Warning,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Demo Mode section
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Demo Mode",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Simulate connected controller for demonstrations",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = demoModeEnabled,
+                        onCheckedChange = { newValue ->
+                            pendingDemoModeValue = newValue
+                            showDemoModeRestartDialog = true
+                        },
+                        modifier = Modifier.testTag("DemoModeSwitch"),
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = SemanticColors.Active,
+                            checkedTrackColor = SemanticColors.Active.copy(alpha = 0.5f)
+                        )
+                    )
+                }
+                if (demoModeEnabled) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        color = SemanticColors.Active.copy(alpha = 0.2f),
+                        shape = MaterialTheme.shapes.small
+                    ) {
+                        Text(
+                            text = "Demo mode active - using simulated controller",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = SemanticColors.Active,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
                     }
